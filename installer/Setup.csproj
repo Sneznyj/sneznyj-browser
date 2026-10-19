@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    РЈСЃС‚Р°РЅРѕРІС‰РёРє РЎРЅРµР¶РЅРѕРіРѕ Р±СЂР°СѓР·РµСЂР°. РЎРґРµР»Р°РЅ РЅР° .NET Framework 4.6.2: РѕРЅ СѓР¶Рµ РІСЃС‚СЂРѕРµРЅ РІ Windows 10 Рё 11,
+    РїРѕСЌС‚РѕРјСѓ СѓСЃС‚Р°РЅРѕРІС‰РёРє Р·Р°РїСѓСЃРєР°РµС‚СЃСЏ РЅР° Р»СЋР±РѕРј РєРѕРјРїСЊСЋС‚РµСЂРµ Р±РµР· РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹С… РїСЂРѕРіСЂР°РјРј Рё РїСЂР°РІ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°.
+    РЎР°Рј Р±СЂР°СѓР·РµСЂ (self-contained, РѕРґРёРЅ С„Р°Р№Р») РїСЂРёРєР»РµРёРІР°РµС‚СЃСЏ Рє Setup.exe СЃР¶Р°С‚С‹Рј LZMS вЂ” СЌС‚Рѕ РґРµР»Р°РµС‚ tools/ReleaseTool pack.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net462</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>SneznyjBrowserSetup</AssemblyName>
+    <RootNamespace>SneznyjSetup</RootNamespace>
+    <ApplicationIcon>..\Assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <Version>0.2.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Product>РЎРЅРµР¶РЅС‹Р№ Р±СЂР°СѓР·РµСЂ</Product>
+    <AssemblyTitle>РЈСЃС‚Р°РЅРѕРІРєР° РЎРЅРµР¶РЅРѕРіРѕ Р±СЂР°СѓР·РµСЂР°</AssemblyTitle>
+    <Company>Sneznyj</Company>
+    <Copyright>В© 2026 Sneznyj</Copyright>
+    <DebugType>none</DebugType>
+    <SatelliteResourceLanguages>ru</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <EmbeddedResource Include="..\Assets\icon-256.png" LogicalName="icon.png" />
+  </ItemGroup>
+
+</Project>
