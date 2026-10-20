@@ -414,24 +414,26 @@ public partial class MainWindow
         BroadcastSettings();
     }
 
-    void AddPanelApp(string name, string url)
+    PanelApp? AddPanelApp(string name, string url)
     {
         url = UrlTools.ToUrl(url, _settings.SearchEngine);
-        if (!UrlTools.IsWeb(url)) { ShowToast("Нужен адрес сайта, например web.telegram.org"); return; }
+        if (!UrlTools.IsWeb(url)) { ShowToast("Нужен адрес сайта, например web.telegram.org"); return null; }
         name = name.Trim().Length > 0 ? name.Trim() : UrlTools.SiteKey(UrlTools.Host(url));
         var data = new PanelAppData { Id = "app" + Guid.NewGuid().ToString("N")[..6], Name = name, Glyph = "", Url = url };
         _settings.PanelApps!.Add(data);
-        _panelApps.Add(new PanelApp(data));
+        var app = new PanelApp(data);
+        _panelApps.Insert(_panelApps.IndexOf(_siteApp), app);   // «Любой сайт» всегда последним
         SaveSettings();
         BroadcastSettings();
         ShowToast($"«{name}» добавлен в боковую панель");
+        return app;
     }
 
     void RemovePanelApp(string id)
     {
         var app = _panelApps.FirstOrDefault(a => a.Id == id);
-        if (app == null) return;
-        if (_panelApps.Count == 1) { ShowToast("В боковой панели должно остаться хотя бы одно приложение"); return; }
+        if (app == null || app.IsSite) return;
+        if (_panelApps.Count(a => !a.IsSite) == 1) { ShowToast("В боковой панели должно остаться хотя бы одно приложение"); return; }
         if (_panelApp == app) ClosePanel();
         if (app.View != null)
         {

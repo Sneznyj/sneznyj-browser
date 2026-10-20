@@ -9,6 +9,19 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // Ошибка в любом обработчике раньше молча закрывала весь браузер (например, когда окно входа Google
+        // закрывалось само). Теперь она пишется в crash.log, а браузер работает дальше.
+        DispatcherUnhandledException += (_, ev) =>
+        {
+            CrashLog.Write("окно", ev.Exception);
+            ev.Handled = true;
+        };
+        TaskScheduler.UnobservedTaskException += (_, ev) =>
+        {
+            CrashLog.Write("фоновая задача", ev.Exception);
+            ev.SetObserved();
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, ev) => CrashLog.Write("программа", ev.ExceptionObject as Exception);
         // Для проверок: окно рисуется без видеокарты, тогда снимок PrintWindow видно, даже если окно перекрыто.
         if (Environment.GetEnvironmentVariable("SNEZNYJ_BROWSER_SOFTWARE") == "1")
             System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;

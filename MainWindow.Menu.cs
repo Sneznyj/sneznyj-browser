@@ -32,6 +32,7 @@ public partial class MainWindow
         m.Items.Add(MenuItemFor("Новая вкладка", "", () => OpenNewTab(), gesture: "Ctrl+T"));
         m.Items.Add(MenuItemFor("Новая приватная вкладка", "", () => OpenNewTab(true), gesture: "Ctrl+Shift+N"));
         m.Items.Add(MenuItemFor("Новое пространство", "", AddWorkspace));
+        m.Items.Add(MenuItemFor("Открыть сайт рядом", "", OpenSitePanel));
         m.Items.Add(new Separator());
 
         var bookmarks = MenuItemFor("Закладки", "", null);
@@ -418,6 +419,12 @@ public partial class MainWindow
             items.Insert(insert++, open);
             items.Insert(insert++, bg);
             items.Insert(insert++, priv);
+            if (tab is { IsPrivate: false })
+            {
+                var side = _env.CreateContextMenuItem("Открыть ссылку рядом, в боковой панели", null, CoreWebView2ContextMenuItemKind.Command);
+                side.CustomItemSelected += (_, _) => Dispatcher.BeginInvoke(() => OpenInPanel(link));
+                items.Insert(insert++, side);
+            }
             if (!tab?.IsPrivate ?? true)
             {
                 var save = _env.CreateContextMenuItem("Добавить ссылку в закладки", null, CoreWebView2ContextMenuItemKind.Command);
@@ -592,7 +599,8 @@ public partial class MainWindow
         yield return C("", "Темы и цвета", "", "theme тема оформление цвет тёмная светлая", () => OpenInternal("settings", "look"));
         yield return C("", "Перенести закладки из Яндекс Браузера", "", "import импорт яндекс", () => ImportBookmarks("yandex"));
         yield return C("", _panelOpen ? "Скрыть боковую панель" : "Показать боковую панель", "Ctrl+Shift+B", "panel sidebar", TogglePanel);
-        foreach (var app in _panelApps)
+        yield return C("", "Открыть сайт рядом (две страницы)", "", "рядом split две панель сайт side", OpenSitePanel, true);
+        foreach (var app in _panelApps.Where(a => !a.IsSite))
         {
             var a = app;
             yield return C(a.Glyph, $"Боковая панель: {a.Name}", "", "panel sidebar " + a.Url, () => OpenPanel(a), true);

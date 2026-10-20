@@ -86,6 +86,8 @@ public sealed class BrowserTab : Observable
     public Workspace Workspace { get; set; } = null!;
     public WebView2? View { get; set; }
     public string? PendingUrl { get; set; }
+    /// <summary>Вкладка, из которой открыли эту (окно входа через Google и т. п.): к ней возвращаемся, когда эта закроется.</summary>
+    public BrowserTab? Opener { get; set; }
     /// <summary>Адрес http://, который сейчас пробуем открыть по https.</summary>
     public string? HttpsUpgradeFrom { get; set; }
     public DateTime HiddenSince { get; set; } = DateTime.Now;
@@ -145,8 +147,12 @@ public sealed class Workspace : Observable
     bool _isCurrent;
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
-    public string Name { get => _name; set => Set(ref _name, value); }
+    public string Name { get => _name; set { if (Set(ref _name, value)) Raise(nameof(Tip)); } }
     public string Glyph { get => _glyph; set => Set(ref _glyph, value); }
+
+    /// <summary>Подсказка у значка пространства рядом с вкладками: название и сколько в нём вкладок.</summary>
+    public string Tip => _count == 0 ? _name : $"{_name} · {_count} " +
+        ((_count % 10 == 1 && _count % 100 != 11) ? "вкладка" : (_count % 10 is >= 2 and <= 4 && _count % 100 is < 12 or > 14) ? "вкладки" : "вкладок");
 
     public string Accent
     {
@@ -182,7 +188,7 @@ public sealed class Workspace : Observable
     public BrowserTab? ActiveTab { get; set; }
 
     int _count;
-    public int Count { get => _count; set { if (Set(ref _count, value)) Raise(nameof(CountText)); } }
+    public int Count { get => _count; set { if (Set(ref _count, value)) { Raise(nameof(CountText)); Raise(nameof(Tip)); } } }
     public string CountText => _count == 0 ? "" : _count.ToString();
 
     /// <summary>Пересобирает Strip по Tabs, не пересоздавая элементы: вкладки не мигают и не теряют наведение.</summary>
@@ -286,15 +292,21 @@ public sealed class PanelApp : Observable
     public PanelApp(PanelAppData d)
     {
         Id = d.Id;
-        Name = d.Name;
+        _name = d.Name;
         Glyph = d.Glyph;
         Url = d.Url;
     }
 
+    string _name;
+    public const string SiteId = "site";
+
     public string Id { get; }
-    public string Name { get; }
+    public string Name { get => _name; set => Set(ref _name, value); }
     public string Glyph { get; }
-    public string Url { get; }
+    /// <summary>Для обычных приложений — их адрес; для «Любого сайта» — то, что сейчас открыто рядом.</summary>
+    public string Url { get; set; }
+    /// <summary>«Любой сайт»: место в боковой панели, куда открывается любой адрес — две страницы рядом.</summary>
+    public bool IsSite => Id == SiteId;
     public WebView2? View { get; set; }
     public bool IsCurrent { get => _isCurrent; set => Set(ref _isCurrent, value); }
 

@@ -216,6 +216,8 @@ public sealed class SessionData
     public bool PanelOpen { get; set; }
     public string? PanelApp { get; set; }
     public double PanelWidth { get; set; } = 400;
+    /// <summary>Что было открыто в боковой панели в «Любом сайте».</summary>
+    public string? PanelSiteUrl { get; set; }
     public double? Left { get; set; }
     public double? Top { get; set; }
     public double? Width { get; set; }

@@ -16,13 +16,16 @@ namespace SneznyjBrowser;
 /// </summary>
 public partial class MainWindow
 {
-    const double PanelWidth = 264, RailWidth = 52;
+    /// <summary>Вкладки сверху — панель узкая (поиск, сайты панели, закладки…); вкладки слева — широкая, со списком вкладок.</summary>
+    const double NarrowPanel = 132, WidePanel = 264, RailWidth = 52;
+
+    double PanelWidth => _settings.TabsPosition == "top" ? NarrowPanel : WidePanel;
 
     Window? _panelOverlay;
     Border? _overlayFrame;
     TranslateTransform? _overlaySlide;
     bool _panelExpanded, _panelCollapsing;
-    readonly DispatcherTimer _hoverTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };
+    readonly DispatcherTimer _hoverTimer = new() { Interval = TimeSpan.FromMilliseconds(20) };
     long _hoverSince, _leaveSince;
     int _openMenus;
     /// <summary>Только для проверки командой --cmd=expand-panel: не прятать панель, пока не придёт collapse-panel.</summary>
@@ -93,13 +96,26 @@ public partial class MainWindow
         ToolbarGrid.Margin = new Thickness(6, 0, top ? 6 : 146, 0);
         Toolbar.BorderThickness = new Thickness(0);
 
+        // Вкладки сверху: пространства — прямо у вкладок, а в левой панели вместо них поиск и сайты боковой панели.
+        TopSpaces.Visibility = top ? Visibility.Visible : Visibility.Collapsed;
         SideTabsHeader.Visibility = top ? Visibility.Collapsed : Visibility.Visible;
         SideTabsScroll.Visibility = top ? Visibility.Collapsed : Visibility.Visible;
         WsIconsBox.Visibility = top ? Visibility.Collapsed : Visibility.Visible;
-        WsRowsBox.Visibility = top ? Visibility.Visible : Visibility.Collapsed;
+        QuickBox.Visibility = top ? Visibility.Visible : Visibility.Collapsed;
         ServicesDock.Visibility = top ? Visibility.Collapsed : Visibility.Visible;
         ServicesRows.Visibility = top ? Visibility.Visible : Visibility.Collapsed;
+        PaletteRow.Visibility = top ? Visibility.Collapsed : Visibility.Visible;
+        RailQuick.Visibility = top ? Visibility.Visible : Visibility.Collapsed;
+        RailSpaces.Visibility = top ? Visibility.Collapsed : Visibility.Visible;
+        RailApps.Visibility = top ? Visibility.Collapsed : Visibility.Visible;
         RailTabsScroll.Visibility = top ? Visibility.Hidden : Visibility.Visible;
+        BrandText.Visibility = top ? Visibility.Collapsed : Visibility.Visible;
+        PanelHeader.Margin = top ? new Thickness(12, 0, 4, 0) : new Thickness(16, 0, 8, 0);
+        PanelTopBox.Margin = top ? new Thickness(6, 2, 6, 0) : new Thickness(10, 2, 8, 0);
+        PanelBottomBox.Margin = top ? new Thickness(6, 6, 6, 8) : new Thickness(10, 6, 8, 0);
+        CollapsePanelOverlay(immediate: true);
+        LeftPanel.Width = PanelWidth;
+        if (_overlayFrame != null) _overlayFrame.Width = PanelWidth;
         PanelHeaderRow.Height = new GridLength(top ? 40 : 46);
         RailHeaderRow.Height = new GridLength(top ? 40 : 46);
 
@@ -176,7 +192,7 @@ public partial class MainWindow
             // Верх полоски — заголовок окна: там раскрывать не нужно, иначе мешает перетаскивать окно.
             double head = RailHeaderRow.ActualHeight * VisualTreeHelper.GetDpi(this).DpiScaleY;
             zone = new Rect(zone.X, zone.Y + head, zone.Width, Math.Max(0, zone.Height - head));
-            delay = 170;
+            delay = 70;
         }
         else
         {
@@ -185,7 +201,7 @@ public partial class MainWindow
             bool maximized = WindowState == WindowState.Maximized;
             double head = 40 * dpi;
             zone = new Rect(area.Left - (maximized ? 2 : 0), area.Top + head, (maximized ? 4 : 8) * dpi, Math.Max(0, area.Height - head));
-            delay = maximized ? 60 : 260;
+            delay = maximized ? 30 : 150;
         }
         if (!zone.Contains(cursor)) { _hoverSince = 0; return; }
         if (_hoverSince == 0) _hoverSince = now;
@@ -217,7 +233,7 @@ public partial class MainWindow
         if (_current?.ActiveTab is { } t) Dispatcher.BeginInvoke(() => BringTabIntoView(t), DispatcherPriority.Loaded);
 
         bool compact = _settings.LeftPanel == "compact";
-        var duration = TimeSpan.FromMilliseconds(compact ? 170 : 190);
+        var duration = TimeSpan.FromMilliseconds(compact ? 100 : 120);
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
         if (!_settings.Animations || !SystemParameters.ClientAreaAnimation)
         {
@@ -231,7 +247,7 @@ public partial class MainWindow
         {
             _overlaySlide!.BeginAnimation(TranslateTransform.XProperty, null);
             _overlaySlide.X = 0;
-            double from = _overlayFrame.ActualWidth is > 0 and < PanelWidth && _panelOverlay.IsVisible ? _overlayFrame.ActualWidth : RailWidth;
+            double from = _overlayFrame.ActualWidth > 0 && _overlayFrame.ActualWidth < PanelWidth && _panelOverlay.IsVisible ? _overlayFrame.ActualWidth : RailWidth;
             _overlayFrame.BeginAnimation(WidthProperty, new DoubleAnimation(from, PanelWidth, duration) { EasingFunction = ease });
         }
         else
@@ -259,7 +275,7 @@ public partial class MainWindow
         }
         _panelCollapsing = true;
         bool compact = _settings.LeftPanel == "compact";
-        var duration = TimeSpan.FromMilliseconds(140);
+        var duration = TimeSpan.FromMilliseconds(100);
         var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
         void Done()
         {

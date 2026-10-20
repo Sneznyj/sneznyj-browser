@@ -45,6 +45,8 @@ public partial class MainWindow : Window
     CoreWebView2Environment? _env;
     Workspace? _current;
     PanelApp? _panelApp;
+    /// <summary>«Любой сайт» в боковой панели: сюда открывается любой адрес — две страницы рядом.</summary>
+    readonly PanelApp _siteApp;
     bool _panelOpen;
     bool _ready;
     bool _isFullscreen, _manualFullscreen;
@@ -85,11 +87,14 @@ public partial class MainWindow : Window
             }
         }
         foreach (var p in _settings.PanelApps!) _panelApps.Add(new PanelApp(p));
+        _siteApp = new PanelApp(new PanelAppData { Id = PanelApp.SiteId, Name = "Любой сайт", Glyph = "\uE774", Url = _session.PanelSiteUrl ?? "" });
+        _panelApps.Add(_siteApp);
         WorkspaceList.ItemsSource = _workspaces;
-        WorkspaceRows.ItemsSource = _workspaces;
+        TopWorkspaces.ItemsSource = _workspaces;
         RailWorkspaces.ItemsSource = _workspaces;
         PanelAppList.ItemsSource = _panelApps;
         RailApps.ItemsSource = _panelApps;
+        RailTopApps.ItemsSource = _panelApps;
         DockApps.ItemsSource = _panelApps;
         RowApps.ItemsSource = _panelApps;
         BookmarkBarItems.ItemsSource = _bookmarks.BarItems;
@@ -149,7 +154,7 @@ public partial class MainWindow : Window
         if (_settings.OnStartup == "start" && _current?.ActiveTab is { } first && !UrlTools.IsNewTab(first.Url)) OpenNewTab();
         OpenFromOutside(_startupArgs);
         if (_session.PanelOpen)
-            OpenPanel(_panelApps.FirstOrDefault(a => a.Id == _session.PanelApp) ?? _panelApps.FirstOrDefault());
+            OpenPanel(_panelApps.FirstOrDefault(a => a.Id == _session.PanelApp) ?? _panelApps.FirstOrDefault(), focusAddress: false);
         _sleepTimer.Start();
         if (_startupArgs.Contains("--updated")) ShowToast($"Браузер обновлён до версии {Updater.CurrentText}");
         StartUpdates();
@@ -160,6 +165,8 @@ public partial class MainWindow : Window
 
     void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        // Страховка: если обёртка движка всё же попробует закрыть окно по window.close() страницы — не даём.
+        if (ClosedByPage()) { e.Cancel = true; return; }
         SaveSession();
         _history.Save();
         _downloads.Save();
@@ -188,6 +195,7 @@ public partial class MainWindow : Window
         _session.ActiveWorkspace = _current?.Id;
         _session.PanelOpen = _panelOpen;
         _session.PanelApp = _panelApp?.Id;
+        _session.PanelSiteUrl = UrlTools.IsWeb(_siteApp.Url) ? _siteApp.Url : null;
         _session.Workspaces = _workspaces.Select(w => w.ToData()).ToList();
         _session.Closed = _closed.TakeLast(25).ToList();
         try { Json.Save(AppPaths.SessionFile, _session); } catch { }
@@ -300,9 +308,48 @@ public partial class MainWindow : Window
         QueueSave();
     }
 
-    void WsRename_Click(object sender, RoutedEventArgs e)
+    /// <summary>Значок пространства рядом с вкладками: другое — перейти, текущее — открыть список пространств.</summary>
+    void TopWorkspace_Click(object sender, RoutedEventArgs e)
     {
         if (WorkspaceOf(sender) is not { } ws) return;
+        if (ws != _current) SwitchWorkspace(ws);
+        else ShowSpacesMenu((UIElement)sender);
+    }
+
+    void ShowSpacesMenu(UIElement anchor)
+    {
+        var m = new ContextMenu { MinWidth = 250 };
+        int n = 0;
+        foreach (var w in _workspaces)
+        {
+            n++;
+            var target = w;
+            var it = MenuItemFor(w.Name, null, () => SwitchWorkspace(target), gesture: n <= 9 ? $"Alt+{n}" : null);
+            var icon = new TextBlock { Text = w.Glyph, FontSize = 13.5, Foreground = w.AccentBrush, VerticalAlignment = VerticalAlignment.Center };
+            icon.SetResourceReference(TextBlock.FontFamilyProperty, "IconFont");
+            it.Icon = icon;
+            it.ToolTip = w.Tip;
+            if (w == _current) it.FontWeight = FontWeights.SemiBold;
+            m.Items.Add(it);
+        }
+        m.Items.Add(new Separator());
+        m.Items.Add(MenuItemFor("Новое пространство…", "\uE710", AddWorkspace));
+        if (_current is { } cur)
+        {
+            m.Items.Add(MenuItemFor($"Переименовать «{cur.Name}»…", "\uE70F", () => RenameWorkspace(cur)));
+            m.Items.Add(MenuItemFor("Сменить значок и цвет", "\uE790", () => CycleWorkspaceLook(cur)));
+            m.Items.Add(MenuItemFor($"Удалить «{cur.Name}»…", "\uE74D", () => DeleteWorkspace(cur), _workspaces.Count > 1));
+        }
+        OpenMenu(m, anchor, PlacementMode.Bottom);
+    }
+
+    void WsRename_Click(object sender, RoutedEventArgs e)
+    {
+        if (WorkspaceOf(sender) is { } ws) RenameWorkspace(ws);
+    }
+
+    void RenameWorkspace(Workspace ws)
+    {
         var name = InputDialog.Ask(this, "Переименовать пространство", "", ws.Name);
         if (string.IsNullOrWhiteSpace(name)) return;
         ws.Name = name.Trim();
@@ -313,7 +360,11 @@ public partial class MainWindow : Window
 
     void WsLook_Click(object sender, RoutedEventArgs e)
     {
-        if (WorkspaceOf(sender) is not { } ws) return;
+        if (WorkspaceOf(sender) is { } ws) CycleWorkspaceLook(ws);
+    }
+
+    void CycleWorkspaceLook(Workspace ws)
+    {
         int i = Array.FindIndex(Defaults.Looks, l => l.Glyph == ws.Glyph);
         var next = Defaults.Looks[(i + 1) % Defaults.Looks.Length];
         ws.Glyph = next.Glyph;
@@ -324,7 +375,11 @@ public partial class MainWindow : Window
 
     void WsDelete_Click(object sender, RoutedEventArgs e)
     {
-        if (WorkspaceOf(sender) is not { } ws) return;
+        if (WorkspaceOf(sender) is { } ws) DeleteWorkspace(ws);
+    }
+
+    void DeleteWorkspace(Workspace ws)
+    {
         if (_workspaces.Count == 1) { ShowToast("Последнее пространство удалить нельзя"); return; }
         if (!InputDialog.Confirm(this, $"Удалить «{ws.Name}»?",
                 $"Закроются его вкладки ({ws.Tabs.Count}) и ссылки стартовой. Вернуть не получится.", "Удалить"))
@@ -456,8 +511,9 @@ public partial class MainWindow : Window
             if (ws == _current)
             {
                 // Как в Яндексе: следующей становится соседняя вкладка той же группы, иначе — справа.
-                BrowserTab? next = null;
-                if (tab.Group != null)
+                // Окно входа закрылось — возвращаемся на сайт, где нажимали «Войти».
+                BrowserTab? next = tab.Opener is { } o && ws.Tabs.Contains(o) ? o : null;
+                if (next == null && tab.Group != null)
                     next = ws.Tabs.Skip(Math.Min(index, ws.Tabs.Count)).FirstOrDefault(t => t.Group == tab.Group)
                            ?? ws.Tabs.Take(index).LastOrDefault(t => t.Group == tab.Group);
                 next ??= ws.Tabs.Count > 0 ? ws.Tabs[Math.Min(index, ws.Tabs.Count - 1)] : NewTab(ws, "");
@@ -587,6 +643,7 @@ public partial class MainWindow : Window
             return;
         }
         if (tab.View != view || view.CoreWebView2 == null) return;
+        KeepWindowOnPageClose(view);
         Configure(view.CoreWebView2, tab, null);
         view.ZoomFactorChanged += (_, _) => OnZoomChanged(tab);
         if (navigate) Navigate(tab, tab.Url);
@@ -667,7 +724,12 @@ public partial class MainWindow : Window
             }
             catch { }
         };
-        core.WindowCloseRequested += (_, _) => CloseTab(tab);
+        // Окно входа (Google, ВК, Яндекс…) после входа закрывает себя само — закрываем только эту вкладку,
+        // и не изнутри события движка, а следом, когда оно отработает.
+        core.WindowCloseRequested += (_, _) => Dispatcher.BeginInvoke(() =>
+        {
+            if (tab.Workspace.Tabs.Contains(tab)) CloseTab(tab);
+        });
         core.IsDocumentPlayingAudioChanged += (_, _) => tab.IsAudible = core.IsDocumentPlayingAudio;
         core.IsMutedChanged += (_, _) => tab.IsMuted = core.IsMuted;
         core.WebMessageReceived += (_, e) => OnPageMessage(core, tab, e);
@@ -772,6 +834,7 @@ public partial class MainWindow : Window
         try
         {
             var tab = NewTab(ws, e.Uri, null, index, isPrivate, opener?.Group);
+            tab.Opener = opener;
             ActivateTab(tab, createView: false);
             await EnsureView(tab, navigate: false);
             if (tab.View?.CoreWebView2 is { } core) e.NewWindow = core;   // окно-«ребёнок» знает родителя: входы через Google и т. п. работают
@@ -786,6 +849,36 @@ public partial class MainWindow : Window
         {
             deferral.Complete();
         }
+    }
+
+    /// <summary>
+    /// WPF-обёртка движка на window.close() страницы закрывает ВСЁ окно программы (так устроен WebView2Base
+    /// в Microsoft.Web.WebView2.Wpf). Из-за этого браузер «вылетал», когда окно входа через Google и т. п.
+    /// закрывало себя после входа. Снимаем этот обработчик; вкладку закрываем сами в Configure.
+    /// </summary>
+    static void KeepWindowOnPageClose(WebView2 view)
+    {
+        try
+        {
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var inner = typeof(WebView2).GetField("m_webview2Base", flags)?.GetValue(view);
+            var method = inner?.GetType().GetMethod("CoreWebView2_WindowCloseRequested", flags);
+            if (inner == null || method == null || view.CoreWebView2 == null) return;
+            view.CoreWebView2.WindowCloseRequested -= (EventHandler<object>)Delegate.CreateDelegate(typeof(EventHandler<object>), inner, method);
+        }
+        catch (Exception ex) { CrashLog.Write("KeepWindowOnPageClose", ex); }
+    }
+
+    /// <summary>Окно закрывают из обработчика движка (страница вызвала window.close()), а не человек.</summary>
+    static bool ClosedByPage()
+    {
+        var frames = new StackTrace().GetFrames();
+        if (frames.Any(f => f.GetMethod()?.Name == "CoreWebView2_WindowCloseRequested"))
+        {
+            CrashLog.Note("страница попыталась закрыть окно браузера — не дали");
+            return true;
+        }
+        return false;
     }
 
     /// <summary>Куда вставить вкладку, открытую из opener: после неё и уже открытых из неё же соседей группы.</summary>
@@ -1060,80 +1153,6 @@ public partial class MainWindow : Window
         var tl = Native.PxToDip(this, px.TopLeft);
         var br = Native.PxToDip(this, px.BottomRight);
         return new Rect(tl, br);
-    }
-
-    // ───────────────────────── боковая панель приложений ─────────────────────────
-
-    void PanelToggle_Click(object sender, RoutedEventArgs e) => TogglePanel();
-    void PanelClose_Click(object sender, RoutedEventArgs e) => ClosePanel();
-
-    void PanelApp_Click(object sender, RoutedEventArgs e)
-    {
-        if ((sender as FrameworkElement)?.DataContext is not PanelApp app) return;
-        bool inPanelHeader = sender is DependencyObject d && PanelAppList.IsAncestorOf(d);
-        if (!inPanelHeader && _panelOpen && _panelApp == app) ClosePanel();   // повторный клик в левой панели — скрыть
-        else OpenPanel(app);
-    }
-
-    void PanelToTab_Click(object sender, RoutedEventArgs e)
-    {
-        var url = _panelApp?.View?.CoreWebView2?.Source ?? _panelApp?.Url;
-        if (!string.IsNullOrEmpty(url)) OpenSmart(url);
-    }
-
-    void PanelSplitter_DragCompleted(object sender, DragCompletedEventArgs e)
-    {
-        _session.PanelWidth = PanelCol.ActualWidth;
-        QueueSave();
-    }
-
-    void TogglePanel()
-    {
-        if (_panelOpen) ClosePanel();
-        else OpenPanel(_panelApp ?? _panelApps.FirstOrDefault());
-    }
-
-    async void OpenPanel(PanelApp? app)
-    {
-        if (app == null || _env == null) return;
-        _panelOpen = true;
-        _panelApp = app;
-        if (!_isFullscreen) ShowPanelColumns(true);
-        foreach (var a in _panelApps)
-        {
-            a.IsCurrent = a == app;
-            a.IsShown = a == app;
-            if (a.View != null) a.View.Visibility = a == app ? Visibility.Visible : Visibility.Collapsed;
-        }
-        QueueSave();
-        if (app.View != null) return;
-
-        var view = new WebView2 { DefaultBackgroundColor = Themes.ToDrawing(Themes.Current.PageBg) };
-        app.View = view;
-        PanelHost.Children.Add(view);
-        try { await view.EnsureCoreWebView2Async(_env); }
-        catch (Exception ex) { Debug.WriteLine(ex); return; }
-        Configure(view.CoreWebView2, null, app);
-        view.CoreWebView2.Navigate(app.Url);
-    }
-
-    void ClosePanel()
-    {
-        _panelOpen = false;
-        foreach (var a in _panelApps) a.IsShown = false;
-        ShowPanelColumns(false);
-        QueueSave();
-    }
-
-    void ShowPanelColumns(bool show)
-    {
-        PanelRoot.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        PanelSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        SplitterCol.Width = new GridLength(show ? 6 : 0);
-        PanelCol.MinWidth = show ? 280 : 0;
-        PanelCol.Width = new GridLength(show ? Math.Clamp(_session.PanelWidth, 280, 900) : 0);
-        foreach (var a in _panelApps)
-            if (a.View != null) a.View.Visibility = show && a == _panelApp ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ───────────────────────── обновления ─────────────────────────
@@ -1429,6 +1448,41 @@ public partial class MainWindow : Window
         QueueSave();
     }
 
+    /// <summary>Проверка без мыши: click:x:y — «настоящий» клик в активной вкладке (через DevTools, считается действием человека).</summary>
+    async void ClickInPage(string cmd)
+    {
+        var parts = cmd.Split(':');
+        if (parts.Length < 3 || ActiveCore is not { } core || !double.TryParse(parts[1], out var x) || !double.TryParse(parts[2], out var y)) return;
+        try
+        {
+            foreach (var type in new[] { "mouseMoved", "mousePressed", "mouseReleased" })
+                await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent",
+                    JsonSerializer.Serialize(new { type, x, y, button = type == "mouseMoved" ? "none" : "left", clickCount = 1 }));
+        }
+        catch (Exception ex) { CrashLog.Write("click", ex); }
+    }
+
+    /// <summary>Проверка без мыши: dump — записать вкладки и панели в test-state.json в папке данных.</summary>
+    void DumpState()
+    {
+        var state = new
+        {
+            current = _current?.Name,
+            active = _current?.ActiveTab?.Url,
+            panelOpen = _panelOpen,
+            panelApp = _panelApp?.Id,
+            panelUrl = _panelApp?.View?.CoreWebView2?.Source,
+            leftPanel = _settings.LeftPanel,
+            workspaces = _workspaces.Select(w => new
+            {
+                w.Name,
+                tabs = w.Tabs.Select(t => new { t.Title, t.Url, t.IsActive, hasView = t.View != null, group = t.Group?.Name }),
+            }),
+        };
+        try { File.WriteAllText(Path.Combine(AppPaths.Root, "test-state.json"), JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping })); }
+        catch (Exception ex) { CrashLog.Write("dump", ex); }
+    }
+
     /// <summary>Команды для проверки без мыши и клавиатуры: SneznyjBrowser.exe --cmd=expand-panel --no-activate.</summary>
     void RunTestCommand(string cmd)
     {
@@ -1460,6 +1514,11 @@ public partial class MainWindow : Window
             case var f when f.StartsWith("findtext:"): FindBar.Visibility = Visibility.Visible; FindBox.Text = f[9..]; RunFind(); break;
             case "close-others": if (_current?.ActiveTab is { } keep) foreach (var other in _current.Tabs.Where(x => x != keep).ToList()) CloseTab(other); break;
             case "collapse-groups": foreach (var g in _current?.Groups.ToList() ?? new()) if (!g.Collapsed) ToggleGroup(g); break;
+            case "dump": DumpState(); break;
+            case "spaces-menu": if (TopWorkspaces.ItemContainerGenerator.ContainerFromItem(_current) is UIElement chip) ShowSpacesMenu(chip); break;
+            case "panel-half": PanelHalf_Click(this, new RoutedEventArgs()); break;
+            case var pu when pu.StartsWith("panel-url:"): OpenInPanel(pu[10..]); break;
+            case var c when c.StartsWith("click:"): ClickInPage(c); break;
             default:
                 if (cmd.StartsWith("set:") && cmd.IndexOf('=') is int eq and > 4)
                     ApplySetting(cmd[4..eq], JsonDocument.Parse(JsonSerializer.Serialize(cmd[(eq + 1)..])).RootElement);

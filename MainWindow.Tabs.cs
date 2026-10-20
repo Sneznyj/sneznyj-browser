@@ -116,7 +116,7 @@ public partial class MainWindow
 
     Workspace? WorkspaceUnderMouse()
     {
-        foreach (var list in new ItemsControl[] { RailWorkspaces, WorkspaceList, WorkspaceRows })
+        foreach (var list in new ItemsControl[] { TopWorkspaces, RailWorkspaces, WorkspaceList })
         {
             if (!list.IsVisible) continue;
             var p = Mouse.GetPosition(list);
@@ -282,6 +282,8 @@ public partial class MainWindow
         }));
         m.Items.Add(MenuItemFor("Обновить", "", () => ReloadTab(tab), gesture: "F5"));
         m.Items.Add(MenuItemFor("Дублировать", "", () => DuplicateTab(tab)));
+        m.Items.Add(MenuItemFor("Открыть рядом, в боковой панели", "\uE90D", () => OpenInPanel(tab.View?.CoreWebView2?.Source ?? tab.Url),
+            UrlTools.IsWeb(tab.Url) && !tab.IsPrivate));
         m.Items.Add(MenuItemFor(tab.IsPinned ? "Открепить вкладку" : "Закрепить вкладку", tab.IsPinned ? "" : "", () => TogglePin(tab)));
         m.Items.Add(MenuItemFor(tab.IsMuted ? "Включить звук" : "Выключить звук", tab.IsMuted ? "" : "", () => ToggleMute(tab),
             tab.View?.CoreWebView2 != null));

@@ -20,6 +20,8 @@
             <MenuItem Header="Сменить значок и цвет" Click="WsLook_Click"/>
             <Separator/>
             <MenuItem Header="Удалить пространство" Click="WsDelete_Click"/>
+            <Separator/>
+            <MenuItem Header="Новое пространство…" Click="AddWorkspace_Click"/>
         </ContextMenu>
 
         <!-- Значок вкладки: favicon, запасной значок или крутилка загрузки -->
@@ -115,7 +117,13 @@
                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="18" Height="18"/>
                 </Button>
 
-                <StackPanel Grid.Row="1" HorizontalAlignment="Center">
+                <!-- Вкладки сверху: поиск и сайты боковой панели (пространства теперь рядом с вкладками) -->
+                <StackPanel x:Name="RailQuick" Grid.Row="1" HorizontalAlignment="Center">
+                    <Button Style="{StaticResource IconButton}" Width="36" Content="&#xE721;" FontSize="15" ToolTip="Поиск и команды (Ctrl+K)" Click="Palette_Click"/>
+                    <ItemsControl x:Name="RailTopApps" Focusable="False" ItemTemplate="{StaticResource PanelAppIcon}"/>
+                </StackPanel>
+
+                <StackPanel x:Name="RailSpaces" Grid.Row="1" HorizontalAlignment="Center">
                     <ItemsControl x:Name="RailWorkspaces" Focusable="False">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="{x:Type local:Workspace}">
@@ -198,18 +206,18 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <DockPanel Margin="16,0,8,0" VerticalAlignment="Center">
+                    <DockPanel x:Name="PanelHeader" Margin="16,0,8,0" VerticalAlignment="Center">
                         <Button x:Name="PinBtn" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="32" Height="30" FontSize="13"
                                 Content="&#xE718;" ToolTip="Закрепить панель" Click="PanelPin_Click"/>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <Path x:Name="LogoPath" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.7"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="20" Height="20"/>
-                            <TextBlock Text="Снежный" Margin="10,0,0,0" FontSize="14.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="BrandText" Text="Снежный" Margin="10,0,0,0" FontSize="14.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         </StackPanel>
                     </DockPanel>
 
                     <!-- Пространства: значками (вкладки слева) или строками (вкладки сверху) -->
-                    <StackPanel Grid.Row="1" Margin="10,2,8,0">
+                    <StackPanel x:Name="PanelTopBox" Grid.Row="1" Margin="10,2,8,0">
                         <DockPanel x:Name="WsIconsBox" LastChildFill="True">
                             <Button DockPanel.Dock="Right" Style="{StaticResource WorkspaceButton}" ToolTip="Новое пространство"
                                     Click="AddWorkspace_Click" VerticalAlignment="Top" Margin="0,0,0,4">
@@ -233,37 +241,15 @@
                             </ItemsControl>
                         </DockPanel>
 
-                        <StackPanel x:Name="WsRowsBox" Visibility="Collapsed">
-                            <TextBlock Text="ПРОСТРАНСТВА" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}" Margin="6,6,0,6"/>
-                            <ItemsControl x:Name="WorkspaceRows" Focusable="False">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type local:Workspace}">
-                                        <Button x:Name="Row" Style="{StaticResource RowButton}" Click="Workspace_Click" Margin="0,0,0,2"
-                                                ContextMenu="{StaticResource WorkspaceMenu}">
-                                            <DockPanel>
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}" Foreground="{DynamicResource MutedBrush}"
-                                                           FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                                <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="15" Width="22"
-                                                           Foreground="{Binding AccentBrush}" VerticalAlignment="Center" Margin="3,0,8,0" TextAlignment="Center"/>
-                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                            </DockPanel>
-                                        </Button>
-                                        <DataTemplate.Triggers>
-                                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
-                                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource SelectedBrush}"/>
-                                                <Setter TargetName="Row" Property="Foreground" Value="{DynamicResource TextBrush}"/>
-                                            </DataTrigger>
-                                        </DataTemplate.Triggers>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <Button Style="{StaticResource RowButton}" Click="AddWorkspace_Click">
+                        <!-- Вкладки сверху: вместо пространств — поиск и сайты боковой панели -->
+                        <StackPanel x:Name="QuickBox" Visibility="Collapsed" Margin="0,2,0,0">
+                            <Button Style="{StaticResource RowButton}" Click="Palette_Click" Margin="0,0,0,1" ToolTip="Поиск по вкладкам, истории, закладкам и командам (Ctrl+K)">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12" Width="22" TextAlignment="Center"
-                                               Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="3,0,8,0"/>
-                                    <TextBlock Text="Новое пространство" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+                                    <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" TextAlignment="Center" VerticalAlignment="Center" Margin="3,0,8,0"/>
+                                    <TextBlock Text="Поиск" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
+                            <ItemsControl x:Name="RowApps" Focusable="False" ItemTemplate="{StaticResource PanelAppRow}"/>
                         </StackPanel>
                     </StackPanel>
 
@@ -381,7 +367,7 @@
                     </ScrollViewer>
 
                     <!-- Закладки, история, загрузки, боковые приложения, настройки -->
-                    <StackPanel Grid.Row="4" Margin="10,6,8,0">
+                    <StackPanel x:Name="PanelBottomBox" Grid.Row="4" Margin="10,6,8,0">
                         <Border Height="1" Background="{DynamicResource LineBrush}" Margin="4,0,4,6"/>
                         <WrapPanel x:Name="ServicesDock" HorizontalAlignment="Left">
                             <ItemsControl x:Name="DockApps" Focusable="False" ItemTemplate="{StaticResource PanelAppIcon}">
@@ -397,29 +383,25 @@
                             <Button Style="{StaticResource IconButton}" Width="36" Content="&#xE713;" FontSize="15" ToolTip="Настройки" Click="Settings_Click"/>
                         </WrapPanel>
                         <StackPanel x:Name="ServicesRows" Visibility="Collapsed">
-                            <ItemsControl x:Name="RowApps" Focusable="False" ItemTemplate="{StaticResource PanelAppRow}"/>
-                            <Button Style="{StaticResource RowButton}" Click="Bookmarks_Click" Margin="0,0,0,1">
-                                <DockPanel>
-                                    <TextBlock DockPanel.Dock="Right" Text="Ctrl+Shift+O" FontSize="11" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <Button Style="{StaticResource RowButton}" Click="Bookmarks_Click" Margin="0,0,0,1" ToolTip="Закладки (Ctrl+Shift+O)">
+                                <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE728;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" TextAlignment="Center" VerticalAlignment="Center" Margin="3,0,8,0"/>
                                     <TextBlock Text="Закладки" VerticalAlignment="Center"/>
-                                </DockPanel>
+                                </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource RowButton}" Click="History_Click" Margin="0,0,0,1">
-                                <DockPanel>
-                                    <TextBlock DockPanel.Dock="Right" Text="Ctrl+H" FontSize="11" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <Button Style="{StaticResource RowButton}" Click="History_Click" Margin="0,0,0,1" ToolTip="История (Ctrl+H)">
+                                <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE81C;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" TextAlignment="Center" VerticalAlignment="Center" Margin="3,0,8,0"/>
                                     <TextBlock Text="История" VerticalAlignment="Center"/>
-                                </DockPanel>
+                                </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource RowButton}" Click="Downloads_Click" Margin="0,0,0,1">
-                                <DockPanel>
-                                    <TextBlock DockPanel.Dock="Right" Text="Ctrl+J" FontSize="11" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                            <Button Style="{StaticResource RowButton}" Click="Downloads_Click" Margin="0,0,0,1" ToolTip="Загрузки (Ctrl+J)">
+                                <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE896;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" TextAlignment="Center" VerticalAlignment="Center" Margin="3,0,8,0"/>
                                     <TextBlock Text="Загрузки" VerticalAlignment="Center"/>
-                                </DockPanel>
+                                </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource RowButton}" Click="Settings_Click" Margin="0,0,0,1">
+                            <Button Style="{StaticResource RowButton}" Click="Settings_Click" Margin="0,0,0,1" ToolTip="Настройки (Ctrl+,)">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE713;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" TextAlignment="Center" VerticalAlignment="Center" Margin="3,0,8,0"/>
                                     <TextBlock Text="Настройки" VerticalAlignment="Center"/>
@@ -428,7 +410,7 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <Button Grid.Row="5" Style="{StaticResource RowButton}" Click="Palette_Click" Margin="10,4,8,10">
+                    <Button x:Name="PaletteRow" Grid.Row="5" Style="{StaticResource RowButton}" Click="Palette_Click" Margin="10,4,8,10">
                         <DockPanel>
                             <Border DockPanel.Dock="Right" CornerRadius="5" Background="{DynamicResource SurfaceBrush}"
                                     BorderBrush="{DynamicResource PopupBorderBrush}" BorderThickness="1" Padding="6,1">
@@ -456,10 +438,46 @@
             <!-- Вкладки сверху -->
             <Grid x:Name="TabRow" Grid.Row="0" Height="40">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="146"/>
                 </Grid.ColumnDefinitions>
-                <ItemsControl x:Name="TopTabs" Margin="6,0,8,0" Focusable="False" ClipToBounds="True"
+
+                <!-- Пространства прямо у вкладок, как группы в Яндексе: текущее с названием, остальные значками.
+                     Клик по текущему — список пространств; вкладку можно перетащить на значок другого. -->
+                <StackPanel x:Name="TopSpaces" Orientation="Horizontal" VerticalAlignment="Top" Margin="6,8,0,0">
+                    <ItemsControl x:Name="TopWorkspaces" Focusable="False">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type local:Workspace}">
+                                <Button Style="{StaticResource SpaceChip}" Click="TopWorkspace_Click" ToolTip="{Binding Tip}"
+                                        ContextMenu="{StaticResource WorkspaceMenu}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="14"
+                                                   Foreground="{Binding AccentBrush}" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="SpaceName" Text="{Binding Name}" Visibility="Collapsed" Margin="7,0,0,1" FontSize="12.5"
+                                                   FontWeight="SemiBold" MaxWidth="120" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="SpaceChevron" Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="8"
+                                                   Visibility="Collapsed" Margin="7,1,0,0" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+                                    </StackPanel>
+                                </Button>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                        <Setter TargetName="SpaceName" Property="Visibility" Value="Visible"/>
+                                        <Setter TargetName="SpaceChevron" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Border Width="1" Height="18" Background="{DynamicResource LineBrush}" Margin="5,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <ItemsControl x:Name="TopTabs" Grid.Column="1" Margin="4,0,8,0" Focusable="False" ClipToBounds="True"
                               PreviewMouseLeftButtonDown="Strip_PreviewMouseLeftButtonDown" PreviewMouseMove="Strip_PreviewMouseMove"
                               PreviewMouseLeftButtonUp="Strip_PreviewMouseLeftButtonUp" PreviewMouseDown="Strip_PreviewMouseDown"
                               PreviewMouseRightButtonUp="Strip_PreviewMouseRightButtonUp" PreviewMouseWheel="TopTabs_MouseWheel">
@@ -625,7 +643,7 @@
                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Grid>
                             </Button>
-                            <Button x:Name="PanelBtn" Style="{StaticResource IconButton}" Content="&#xE90D;" ToolTip="Боковая панель: мессенджеры и почта (Ctrl+Shift+B)" Click="PanelToggle_Click"/>
+                            <Button x:Name="PanelBtn" Style="{StaticResource IconButton}" Content="&#xE90D;" ToolTip="Боковая панель: второй сайт рядом, мессенджеры, почта (Ctrl+Shift+B)" Click="PanelToggle_Click"/>
                             <Button x:Name="MenuBtn" Style="{StaticResource IconButton}" Content="&#xE700;" ToolTip="Меню" Click="Menu_Click"/>
                         </StackPanel>
                     </Grid>
@@ -763,6 +781,7 @@
                 <Grid x:Name="PanelRoot" Grid.Column="2" Visibility="Collapsed" Background="{DynamicResource ToolbarBrush}">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="38"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0">
@@ -771,6 +790,8 @@
                                     ToolTip="Скрыть панель (Ctrl+Shift+B)" Click="PanelClose_Click"/>
                             <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE8A7;" FontSize="12"
                                     ToolTip="Открыть во вкладке" Click="PanelToTab_Click"/>
+                            <Button x:Name="PanelHalfBtn" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xF57C;" FontSize="13"
+                                    ToolTip="Поровну: две страницы одинаковой ширины" Click="PanelHalf_Click"/>
                             <ItemsControl x:Name="PanelAppList" Focusable="False">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
@@ -799,8 +820,43 @@
                             </ItemsControl>
                         </DockPanel>
                     </Border>
-                    <Border Grid.Row="1" Background="{DynamicResource PageBgBrush}">
-                        <Grid x:Name="PanelHost"/>
+                    <!-- Адрес страницы в панели: сюда можно ввести любой сайт — он откроется рядом с основной страницей -->
+                    <Grid Grid.Row="1" Margin="4,0,6,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="PanelBackBtn" Style="{StaticResource IconButton}" Width="30" MinWidth="0" Height="30" FontSize="12"
+                                Content="&#xE72B;" ToolTip="Назад" Click="PanelBack_Click" IsEnabled="False"/>
+                        <Button x:Name="PanelReloadBtn" Grid.Column="1" Style="{StaticResource IconButton}" Width="30" MinWidth="0" Height="30" FontSize="12"
+                                Content="&#xE72C;" ToolTip="Обновить" Click="PanelReload_Click"/>
+                        <Border x:Name="PanelAddressBorder" Grid.Column="2" Height="30" CornerRadius="15" Margin="4,0,0,0" Cursor="IBeam"
+                                Background="{DynamicResource SurfaceBrush}" BorderBrush="Transparent" BorderThickness="1">
+                            <Grid Margin="12,0,10,0">
+                                <TextBlock x:Name="PanelAddressHint" Text="Любой сайт или поиск — откроется здесь" Foreground="{DynamicResource MutedBrush}"
+                                           FontSize="12.5" VerticalAlignment="Center" IsHitTestVisible="False" TextTrimming="CharacterEllipsis"/>
+                                <TextBox x:Name="PanelAddress" Style="{StaticResource BareTextBox}" FontSize="12.5" VerticalAlignment="Center"
+                                         PreviewKeyDown="PanelAddress_PreviewKeyDown" TextChanged="PanelAddress_TextChanged"
+                                         GotKeyboardFocus="PanelAddress_GotKeyboardFocus" LostKeyboardFocus="PanelAddress_LostKeyboardFocus"
+                                         PreviewMouseLeftButtonDown="PanelAddress_PreviewMouseLeftButtonDown"/>
+                            </Grid>
+                        </Border>
+                        <Button x:Name="PanelKeepBtn" Grid.Column="3" Style="{StaticResource IconButton}" Width="30" MinWidth="0" Height="30" FontSize="13"
+                                Margin="2,0,0,0" Content="&#xE710;" ToolTip="Добавить этот сайт в боковую панель отдельным значком" Click="PanelKeep_Click"
+                                Visibility="Collapsed"/>
+                    </Grid>
+                    <Border Grid.Row="2" Background="{DynamicResource PageBgBrush}">
+                        <Grid x:Name="PanelHost">
+                            <StackPanel x:Name="PanelEmptyHint" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="24" Visibility="Collapsed">
+                                <TextBlock Text="&#xF57C;" FontFamily="{StaticResource IconFont}" FontSize="34" HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource MutedBrush}"/>
+                                <TextBlock Text="Два сайта рядом" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,14,0,6"/>
+                                <TextBlock Text="Введите адрес сверху — сайт откроется здесь, а основная страница останется слева. Ширину меняйте, потянув за край."
+                                           Foreground="{DynamicResource MutedBrush}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="260" LineHeight="19"/>
+                            </StackPanel>
+                        </Grid>
                     </Border>
                 </Grid>
             </Grid>
