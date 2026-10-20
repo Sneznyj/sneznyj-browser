@@ -110,7 +110,8 @@ public partial class MainWindow
             bool want = onStart.IsChecked == true, has = ws.Links.Any(l => l.Url == tab.Url);
             if (want && !has) ws.Links.Add(new QuickLink { Title = node.Title.Length > 40 ? node.Title[..40] + "…" : node.Title, Url = tab.Url });
             if (!want && has) ws.Links.RemoveAll(l => l.Url == tab.Url);
-            if (want != has) { StartPage.Write(_workspaces, _settings); QueueSave(); }
+            if (want != has) StartLinksChanged();
+            if (want && !has) FetchStartLogos(new[] { tab.Url });
             _bookmarks.Notify();
         }
         remove.Click += (_, _) => { removed = true; _bookmarks.Remove(node); popup.IsOpen = false; ShowToast("Закладка удалена"); };

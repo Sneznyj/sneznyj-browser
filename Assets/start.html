@@ -7,6 +7,7 @@
 <link id="theme" rel="stylesheet" href="theme.css">
 <style>
   * { box-sizing:border-box }
+  [hidden] { display:none !important }
   html, body { min-height:100%; margin:0 }
   body {
     background: var(--bg); color:var(--text); overflow-x:hidden;
@@ -32,24 +33,72 @@
   input:focus { border-color:var(--accent); box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent) }
   input::placeholder { color:var(--muted) }
   #q { height:54px; border-radius:27px; padding:0 22px 0 52px; font-size:16px; backdrop-filter: blur(10px) }
-  .tiles { margin-top:40px; display:grid; grid-template-columns:repeat(auto-fill, minmax(116px, 1fr)); gap:14px; width:100%; max-width:800px }
-  .tile { position:relative; display:flex; flex-direction:column; align-items:center; gap:10px; padding:18px 8px 14px; border-radius:18px; background:var(--card); border:1px solid transparent; color:var(--ink); text-decoration:none; transition:transform .15s, background .15s, border-color .15s; font:inherit; cursor:pointer; backdrop-filter: blur(12px) }
-  .tile:hover { background:var(--card-hover); border-color:var(--line); transform:translateY(-2px) }
+  /* ── Табло: плитки сайтов ── */
+  .tiles { margin-top:40px; display:grid; grid-template-columns:repeat(auto-fill, minmax(148px, 1fr)); gap:14px; width:100%; max-width:860px }
+  .tile {
+    --tint: transparent;
+    position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:11px;
+    height:116px; padding:14px 10px 12px; border-radius:18px; color:var(--ink); text-decoration:none; font:inherit; cursor:pointer;
+    background: linear-gradient(160deg, color-mix(in srgb, var(--tint) 24%, transparent), color-mix(in srgb, var(--tint) 7%, transparent)), var(--card);
+    border:1px solid color-mix(in srgb, var(--tint) 20%, transparent);
+    transition: transform .15s, box-shadow .15s, border-color .15s; backdrop-filter: blur(12px); outline:none;
+  }
+  .tile:hover { transform:translateY(-2px); box-shadow:0 10px 28px rgba(0,0,0,.22); border-color:color-mix(in srgb, var(--tint) 45%, var(--line)) }
+  .tile:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 50%, transparent) }
   .tile.dragging { opacity:.35 }
-  .tile.over { border-color: var(--accent) }
-  .ico { width:46px; height:46px; border-radius:14px; display:grid; place-items:center; overflow:hidden; font-weight:650; font-size:19px; color:#0e1319 }
-  .ico.img { background:#eef3f8 }
-  .ico img { width:28px; height:28px }
-  .name { font-size:12.5px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-soft) }
-  .del { position:absolute; top:7px; right:7px; width:22px; height:22px; border:0; border-radius:50%; background:var(--surface); color:var(--muted); cursor:pointer; opacity:0; transition:opacity .15s; font-size:14px; line-height:22px; padding:0 }
-  .tile:hover .del { opacity:1 }
-  .del:hover { color:var(--text) }
-  .add .ico { background:transparent; border:1.5px dashed var(--muted); color:var(--ink-soft); font-weight:300; font-size:26px }
-  .addform { display:none; margin-top:18px; width:100%; max-width:640px; gap:10px }
-  .addform.open { display:flex }
-  .addform input { height:42px; border-radius:12px; padding:0 14px; font-size:14px }
-  .addform input:first-child { max-width:200px }
-  button.primary { height:42px; border-radius:12px; border:0; padding:0 18px; background:var(--accent); color:var(--accent-text); font:inherit; font-weight:600; cursor:pointer; white-space:nowrap }
+  .tile.over { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent) }
+  .logo { width:52px; height:52px; border-radius:14px; display:grid; place-items:center; overflow:hidden; flex:none; font-weight:650; font-size:22px; color:#0e1319 }
+  .logo img { width:100%; height:100%; object-fit:cover; display:block }
+  .logo.plate { background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.18) }
+  .logo.plate img { width:30px; height:30px; object-fit:contain }
+  .name { font-size:13px; font-weight:500; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink) }
+  .tools { position:absolute; top:6px; right:6px; display:flex; gap:4px; opacity:0; transition:opacity .15s }
+  .tile:hover .tools, .tile:focus-within .tools { opacity:1 }
+  .tools button { width:24px; height:24px; border:0; border-radius:50%; padding:0; display:grid; place-items:center; background:var(--popup); color:var(--muted); cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.25) }
+  .tools button:hover { color:var(--text) }
+  .tile.add { background:transparent; border:1.5px dashed color-mix(in srgb, var(--ink-soft) 50%, transparent); backdrop-filter:none }
+  .tile.add:hover { background:var(--card); border-color:var(--accent) }
+  .tile.add .logo { background:color-mix(in srgb, var(--ink-soft) 14%, transparent); color:var(--ink-soft); font-weight:300; font-size:30px }
+  .tile.add .name { color:var(--ink-soft) }
+  button.primary { height:40px; border-radius:12px; border:0; padding:0 18px; background:var(--accent); color:var(--accent-text); font:inherit; font-weight:600; cursor:pointer; white-space:nowrap }
+  button.ghost { height:40px; border-radius:12px; border:1px solid var(--line); padding:0 16px; background:var(--surface); color:var(--text); font:inherit; cursor:pointer; white-space:nowrap }
+  button.ghost:hover { background:var(--hover) }
+  button.ghost.danger { color:var(--danger) }
+
+  /* ── окно «Добавить сайт» / «Изменить плитку» ── */
+  .dlg { position:fixed; inset:0; z-index:20; display:none; align-items:flex-start; justify-content:center; padding:11vh 16px 24px; background:rgba(5,8,12,.45); backdrop-filter:blur(3px); overflow:auto }
+  .dlg.open { display:flex; animation:fade .12s }
+  @keyframes fade { from { opacity:0 } }
+  .card { width:100%; max-width:580px; background:var(--popup); border:1px solid var(--popup-border); border-radius:18px; padding:22px 22px 18px; box-shadow:0 24px 70px rgba(0,0,0,.45); color:var(--text); animation:up .15s }
+  .card h3 { margin:0 0 16px; font-size:18px; font-weight:600 }
+  .field { display:block; margin-bottom:12px; font-size:12.5px; color:var(--muted) }
+  .field input { display:block; margin-top:6px; height:42px; border-radius:12px; padding:0 14px; font-size:14.5px }
+  .field input.bad { border-color:var(--danger) }
+  .err { margin:-4px 0 10px; color:var(--danger); font-size:12.5px }
+  .btns { display:flex; gap:8px; align-items:center; margin-top:4px }
+  .btns .grow { flex:1 }
+  .sugg h5 { margin:22px 0 10px; font-size:11.5px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.07em }
+  .chips { display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:8px }
+  .chip { display:flex; align-items:center; gap:10px; min-width:0; padding:7px 10px; border-radius:12px; border:1px solid var(--line); background:var(--surface); color:var(--text); font:inherit; font-size:13px; cursor:pointer; text-align:left }
+  .chip:hover { background:var(--hover); border-color:var(--selected-border) }
+  .chip .logo { width:28px; height:28px; border-radius:8px; font-size:13px }
+  .chip .logo.plate img { width:18px; height:18px }
+  .chip span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .chip.done { opacity:.55; pointer-events:none }
+  .chip.done::after { content:"✓"; color:var(--good); font-weight:700 }
+  .empty { color:var(--muted); font-size:13px }
+
+  /* ── меню плитки и подсказка внизу ── */
+  .menu { position:fixed; z-index:30; min-width:230px; padding:6px; background:var(--popup); border:1px solid var(--popup-border); border-radius:12px; box-shadow:0 14px 40px rgba(0,0,0,.35); display:none }
+  .menu.open { display:block; animation:up .1s }
+  .menu button { display:block; width:100%; text-align:left; border:0; background:transparent; color:var(--text); font:inherit; font-size:13.5px; padding:8px 12px; border-radius:8px; cursor:pointer }
+  .menu button:hover { background:var(--hover) }
+  .menu button.danger { color:var(--danger) }
+  .menu hr { border:0; border-top:1px solid var(--line); margin:5px 4px }
+  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:25; display:none; align-items:center; gap:12px; max-width:calc(100% - 32px); padding:9px 10px 9px 16px; border-radius:12px; background:var(--popup); border:1px solid var(--popup-border); color:var(--text); font-size:13.5px; box-shadow:0 12px 34px rgba(0,0,0,.35) }
+  .toast.open { display:flex; animation:fade .15s }
+  .toast button { border:0; background:transparent; color:var(--accent); font:inherit; font-weight:600; cursor:pointer; padding:4px 8px; border-radius:8px }
+  .toast button:hover { background:var(--hover) }
   .hint { margin-top:44px; color:var(--ink-soft); font-size:12.5px; text-align:center; line-height:2; opacity:.85 }
   kbd { font:12px "Segoe UI",sans-serif; padding:2px 7px; border-radius:6px; background:var(--surface); border:1px solid var(--line); color:var(--soft) }
   #gear { position:fixed; right:18px; bottom:18px; height:40px; border-radius:20px; border:1px solid var(--line); background:var(--card); color:var(--ink); padding:0 16px 0 12px; display:flex; align-items:center; gap:8px; cursor:pointer; font:inherit; font-size:13px; backdrop-filter: blur(12px) }
@@ -90,17 +139,35 @@
     <input id="q" placeholder="Поиск или адрес сайта">
   </form>
   <div class="tiles" id="tiles"></div>
-  <form class="addform" id="addform" autocomplete="off">
-    <input id="addTitle" placeholder="Название">
-    <input id="addUrl" placeholder="Адрес, например youtube.com">
-    <button class="primary" type="submit">Добавить</button>
-  </form>
   <div class="hint">
     <kbd>Ctrl</kbd> <kbd>K</kbd> поиск по вкладкам, истории и командам &nbsp;·&nbsp;
     <kbd>Ctrl</kbd> <kbd>D</kbd> в закладки &nbsp;·&nbsp;
-    <kbd>Alt</kbd> <kbd>1–9</kbd> пространства &nbsp;·&nbsp; плитки можно перетаскивать
+    <kbd>Alt</kbd> <kbd>1–9</kbd> пространства<br>
+    Плитки можно перетаскивать, правый клик по плитке — открыть в новой вкладке, изменить или убрать
   </div>
 </main>
+<div class="dlg" id="dlg">
+  <form class="card" id="dlgForm" autocomplete="off" novalidate>
+    <h3 id="dlgTitle">Добавить сайт</h3>
+    <label class="field">Адрес сайта<input id="fUrl" placeholder="Например, youtube.com" spellcheck="false"></label>
+    <div class="err" id="fErr" hidden>Нужен адрес сайта, например youtube.com</div>
+    <label class="field">Название<input id="fTitle" placeholder="Подставится само"></label>
+    <div class="btns">
+      <button class="ghost danger" type="button" id="dlgDelete">Убрать</button>
+      <span class="grow"></span>
+      <button class="ghost" type="button" id="dlgCancel">Отмена</button>
+      <button class="primary" type="submit" id="dlgOk">Добавить</button>
+    </div>
+    <div class="sugg" id="sugg">
+      <h5 id="hFreq">Вы часто открываете</h5>
+      <div class="chips" id="sFreq"></div>
+      <h5 id="hPop">Популярные сайты</h5>
+      <div class="chips" id="sPop"></div>
+    </div>
+  </form>
+</div>
+<div class="menu" id="menu"></div>
+<div class="toast" id="toast"></div>
 <button id="gear" type="button" title="Фон и вид стартовой">
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 1 0 0 18c1 0 1.6-.8 1.6-1.6 0-.5-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5C21 6.4 17 3 12 3z"/></svg>
   Фон
@@ -126,6 +193,11 @@ const DATA = /*__DATA__*/null;
       const m = e.data || {};
       if (m.type === 'theme') $('theme').href = 'theme.css?v=' + Date.now();
       if (m.type === 'startImage') { D.image = m.image; setBg('image'); }
+      if (m.type === 'links') {
+        const w = (m.workspaces || []).find(x => x.id === ws.id);
+        if (w) { ws.links = w.links; if (dragFrom < 0) renderTiles(); }
+      }
+      if (m.type === 'suggest' && m.ws === ws.id) fillSuggest(m);
     });
   } catch (e) { }
 
@@ -145,38 +217,79 @@ const DATA = /*__DATA__*/null;
     location.href = looksUrl(v) ? normalize(v) : D.search.replace('{0}', encodeURIComponent(v));
   });
 
-  // ───── плитки ─────
+  // ───── плитки (Табло) ─────
   const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
   const tiles = $('tiles');
   let dragFrom = -1;
+  const ICON = {
+    edit: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
+    del: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  };
+
+  // Цвет сайта по его значку — плитка слегка окрашивается в него, как в Табло.
+  const tints = new Map();
+  function tintFrom(img, key, el) {
+    if (!tints.has(key)) {
+      let col = '';
+      try {
+        const c = document.createElement('canvas'); c.width = c.height = 24;
+        const x = c.getContext('2d', { willReadFrequently: true });
+        x.drawImage(img, 0, 0, 24, 24);
+        const d = x.getImageData(0, 0, 24, 24).data;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          const max = Math.max(d[i], d[i + 1], d[i + 2]), min = Math.min(d[i], d[i + 1], d[i + 2]);
+          if (d[i + 3] < 160 || max - min < 28) continue;   // прозрачное и серое (белый фон, чёрные буквы) не считаем
+          r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
+        }
+        if (n > 8) col = `rgb(${r / n | 0} ${g / n | 0} ${b / n | 0})`;
+      } catch { }
+      tints.set(key, col);
+    }
+    if (tints.get(key)) el.style.setProperty('--tint', tints.get(key));
+  }
+
+  // Значок сайта: крупный логотип; маленький значок — на белой плашке; нет значка — буква.
+  function logo(l, el) {
+    const box = document.createElement('div');
+    box.className = 'logo';
+    const letter = () => {
+      const h = hue(l.host || l.title || '?');
+      box.className = 'logo';
+      box.textContent = (l.title || l.host || '?').trim().charAt(0).toUpperCase();
+      box.style.background = `hsl(${h} 70% 72%)`;
+      el.style.setProperty('--tint', `hsl(${h} 70% 60%)`);
+    };
+    const src = l.logo || l.fav;
+    if (!src) { letter(); return box; }
+    const img = new Image();
+    img.alt = ''; img.decoding = 'async';
+    img.onload = () => { if (img.naturalWidth < 44) box.classList.add('plate'); tintFrom(img, img.src, el); };
+    img.onerror = () => {
+      if (l.logo && l.fav && !img.src.endsWith(l.fav)) { img.src = l.fav; return; }
+      img.remove(); letter();
+    };
+    img.src = src;
+    box.append(img);
+    return box;
+  }
 
   function tile(l) {
     const a = document.createElement('a');
     a.className = 'tile'; a.title = `${l.title}\n${l.url}`; a.draggable = true;
     if (/^https?:\/\//i.test(l.url)) a.href = l.url;
-    const ico = document.createElement('div');
-    ico.className = 'ico';
-    const letter = () => {
-      ico.classList.remove('img');
-      ico.style.background = `hsl(${hue(l.host || l.title)} 70% 72%)`;
-      ico.textContent = (l.title || l.host || '?').trim().charAt(0).toUpperCase();
-    };
-    if (l.fav) {
-      ico.classList.add('img');
-      const img = new Image(); img.alt = ''; img.src = l.fav;
-      img.onerror = () => { img.remove(); letter(); };
-      ico.append(img);
-    } else letter();
     const name = document.createElement('div');
     name.className = 'name'; name.textContent = l.title;
+    const tools = document.createElement('div');
+    tools.className = 'tools';
+    const edit = document.createElement('button');
+    edit.type = 'button'; edit.title = 'Изменить'; edit.innerHTML = ICON.edit;
+    edit.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); openDialog(l); });
     const del = document.createElement('button');
-    del.className = 'del'; del.title = 'Убрать со стартовой'; del.textContent = '×';
-    del.addEventListener('click', e => {
-      e.preventDefault(); e.stopPropagation();
-      post({ cmd: 'removeLink', ws: ws.id, url: l.url });
-      const i = ws.links.indexOf(l); if (i >= 0) ws.links.splice(i, 1);
-      a.remove();
-    });
+    del.type = 'button'; del.title = 'Убрать со стартовой'; del.innerHTML = ICON.del;
+    del.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); removeLink(l); });
+    tools.append(edit, del);
+    a.addEventListener('contextmenu', e => { e.preventDefault(); showMenu(l, e.clientX, e.clientY); });
     a.addEventListener('dragstart', e => { dragFrom = ws.links.indexOf(l); a.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
     a.addEventListener('dragend', () => { a.classList.remove('dragging'); dragFrom = -1; });
     a.addEventListener('dragover', e => { if (dragFrom >= 0) { e.preventDefault(); a.classList.add('over'); } });
@@ -188,16 +301,17 @@ const DATA = /*__DATA__*/null;
       const [moved] = ws.links.splice(dragFrom, 1);
       ws.links.splice(to, 0, moved);
       post({ cmd: 'moveLink', ws: ws.id, from: dragFrom, to });
+      dragFrom = -1;
       renderTiles();
     });
-    a.append(ico, name, del);
+    a.append(logo(l, a), name, tools);
     return a;
   }
 
   const add = document.createElement('button');
-  add.className = 'tile add'; add.type = 'button';
-  add.innerHTML = '<div class="ico">+</div><div class="name">Добавить</div>';
-  add.addEventListener('click', () => { $('addform').classList.toggle('open'); $('addUrl').focus(); });
+  add.className = 'tile add'; add.type = 'button'; add.title = 'Добавить сайт на стартовую';
+  add.innerHTML = '<div class="logo">+</div><div class="name">Добавить</div>';
+  add.addEventListener('click', () => openDialog(null));
   function renderTiles() {
     tiles.textContent = '';
     ws.links.forEach(l => tiles.append(tile(l)));
@@ -205,19 +319,154 @@ const DATA = /*__DATA__*/null;
   }
   renderTiles();
 
-  $('addform').addEventListener('submit', e => {
-    e.preventDefault();
-    const url = normalize($('addUrl').value);
-    if (!url) return;
-    let host = '';
-    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { return; }
-    const title = $('addTitle').value.trim() || host;
-    post({ cmd: 'addLink', ws: ws.id, title, url });
-    ws.links.push({ title, url, host });
+  const hostOf = url => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } };
+
+  function addLink(l) {
+    if (ws.links.some(x => x.url === l.url)) return;
+    ws.links.push(l);
+    post({ cmd: 'addLink', ws: ws.id, title: l.title, url: l.url });
     renderTiles();
-    $('addTitle').value = $('addUrl').value = '';
-    $('addform').classList.remove('open');
+  }
+
+  function removeLink(l) {
+    const i = ws.links.indexOf(l);
+    if (i < 0) return;
+    ws.links.splice(i, 1);
+    post({ cmd: 'removeLink', ws: ws.id, url: l.url });
+    renderTiles();
+    toast(`Плитка «${l.title}» убрана`, 'Вернуть', () => {
+      if (ws.links.some(x => x.url === l.url)) return;
+      const at = Math.min(i, ws.links.length);
+      ws.links.splice(at, 0, l);
+      post({ cmd: 'addLink', ws: ws.id, title: l.title, url: l.url });
+      if (at < ws.links.length - 1) post({ cmd: 'moveLink', ws: ws.id, from: ws.links.length - 1, to: at });
+      renderTiles();
+    });
+  }
+
+  // ───── окно «Добавить сайт» / «Изменить плитку» ─────
+  let editing = null, sugg = null;
+  const dlg = $('dlg'), fUrl = $('fUrl'), fTitle = $('fTitle');
+
+  function knownTitle(host) {
+    for (const it of [...(sugg?.frequent || []), ...(sugg?.popular || [])]) if (it.host === host) return it.title;
+    return '';
+  }
+
+  function openDialog(l) {
+    hideMenu();
+    editing = l || null;
+    $('dlgTitle').textContent = l ? 'Изменить плитку' : 'Добавить сайт';
+    $('dlgOk').textContent = l ? 'Сохранить' : 'Добавить';
+    $('dlgDelete').hidden = !l;
+    $('sugg').hidden = !!l;
+    $('fErr').hidden = true; fUrl.classList.remove('bad');
+    fUrl.value = l ? l.url : '';
+    fTitle.value = l ? l.title : '';
+    fTitle.placeholder = 'Подставится само';
+    dlg.classList.add('open');
+    if (!l) { if (sugg) fillSuggest(sugg); post({ cmd: 'suggest', ws: ws.id }); }
+    setTimeout(() => { fUrl.focus(); fUrl.select(); }, 0);
+  }
+
+  function closeDialog() { dlg.classList.remove('open'); editing = null; }
+
+  fUrl.addEventListener('input', () => {
+    $('fErr').hidden = true; fUrl.classList.remove('bad');
+    const v = fUrl.value.trim();
+    const host = looksUrl(v) ? hostOf(normalize(v)) : '';
+    fTitle.placeholder = host ? (knownTitle(host) || host) : 'Подставится само';
   });
+
+  $('dlgForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const raw = fUrl.value.trim();
+    if (!raw || !looksUrl(raw)) { $('fErr').hidden = false; fUrl.classList.add('bad'); fUrl.focus(); return; }
+    const url = normalize(raw), host = hostOf(url);
+    if (!host) { $('fErr').hidden = false; return; }
+    const title = fTitle.value.trim() || knownTitle(host) || host;
+    if (editing) {
+      const old = editing.url;
+      if (hostOf(old) !== host) { editing.logo = null; editing.fav = null; }
+      Object.assign(editing, { url, title, host });
+      post({ cmd: 'editLink', ws: ws.id, url: old, newUrl: url, title });
+      renderTiles();
+    } else {
+      const s = [...(sugg?.frequent || []), ...(sugg?.popular || [])].find(it => it.host === host);
+      addLink({ title, url, host, fav: s?.fav, logo: s?.logo });
+    }
+    closeDialog();
+  });
+  $('dlgCancel').onclick = closeDialog;
+  $('dlgDelete').onclick = () => { const l = editing; closeDialog(); if (l) removeLink(l); };
+  dlg.addEventListener('mousedown', e => { if (e.target === dlg) closeDialog(); });
+
+  function fillSuggest(m) {
+    sugg = m;
+    const taken = new Set(ws.links.map(l => l.host));
+    const fill = (box, head, items) => {
+      box.textContent = '';
+      items = (items || []).filter(it => !taken.has(it.host));
+      head.hidden = box.hidden = items.length === 0;
+      for (const it of items) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'chip'; b.title = it.url;
+        const s = document.createElement('span'); s.textContent = it.title;
+        b.append(logo(it, b), s);
+        b.onclick = () => { addLink({ ...it }); b.classList.add('done'); };
+        box.append(b);
+      }
+    };
+    fill($('sFreq'), $('hFreq'), m.frequent);
+    fill($('sPop'), $('hPop'), m.popular);
+  }
+
+  // ───── меню плитки (правый клик) ─────
+  const menu = $('menu');
+  function showMenu(l, x, y) {
+    menu.textContent = '';
+    const item = (text, fn, cls) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = text;
+      if (cls) b.className = cls;
+      b.onclick = () => { hideMenu(); fn(); };
+      menu.append(b);
+    };
+    item('Открыть в новой вкладке', () => post({ cmd: 'open', url: l.url, mode: 'new' }));
+    item('Открыть в фоновой вкладке', () => post({ cmd: 'open', url: l.url, mode: 'background' }));
+    menu.append(document.createElement('hr'));
+    item('Изменить…', () => openDialog(l));
+    item('Убрать со стартовой', () => removeLink(l), 'danger');
+    menu.classList.add('open');
+    const r = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + 'px';
+    menu.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px';
+  }
+  function hideMenu() { menu.classList.remove('open'); }
+  document.addEventListener('mousedown', e => { if (!menu.contains(e.target)) hideMenu(); });
+  addEventListener('blur', hideMenu);
+  addEventListener('scroll', hideMenu, true);
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (menu.classList.contains('open')) hideMenu();
+    else if (dlg.classList.contains('open')) closeDialog();
+  });
+
+  let toastTimer = 0;
+  function toast(text, action, fn) {
+    const t = $('toast');
+    t.textContent = '';
+    const s = document.createElement('span'); s.textContent = text; t.append(s);
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = action;
+      b.onclick = () => { t.classList.remove('open'); fn(); };
+      t.append(b);
+    }
+    t.classList.add('open');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('open'), 6000);
+  }
 
   // ───── часы ─────
   const clock = () => {

@@ -302,7 +302,7 @@ public static class Themes
         try
         {
             Directory.CreateDirectory(AppPaths.Start);
-            File.WriteAllText(Path.Combine(AppPaths.Start, "theme.css"), sb.ToString(), new UTF8Encoding(false));
+            StartPage.WriteIfChanged(Path.Combine(AppPaths.Start, "theme.css"), sb.ToString());
         }
         catch { }
     }

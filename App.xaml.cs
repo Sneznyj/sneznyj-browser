@@ -47,7 +47,17 @@ public partial class App : Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         WelcomeWindow.RunIfFirstStart(activate);
 
-        var window = new MainWindow(e.Args) { ShowActivated = activate };
+        var window = new MainWindow(e.Args);
+        if (!activate && window.WindowState == WindowState.Maximized)
+        {
+            // WPF не может показать развёрнутое окно без активации (окно просто не появлялось):
+            // показываем обычным и разворачиваем, когда его откроют.
+            window.WindowState = WindowState.Normal;
+            EventHandler? restore = null;
+            restore = (_, _) => { window.Activated -= restore; window.WindowState = WindowState.Maximized; };
+            window.Activated += restore;
+        }
+        window.ShowActivated = activate;
         MainWindow = window;
         ShutdownMode = ShutdownMode.OnMainWindowClose;
         window.Show();

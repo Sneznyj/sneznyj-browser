@@ -23,7 +23,7 @@ public static class InternalPages
                 using var s = asm.GetManifestResourceStream("pages/" + f);
                 if (s == null) continue;
                 using var r = new StreamReader(s, Encoding.UTF8);
-                File.WriteAllText(Path.Combine(AppPaths.Start, f), r.ReadToEnd(), new UTF8Encoding(false));
+                StartPage.WriteIfChanged(Path.Combine(AppPaths.Start, f), r.ReadToEnd());
             }
             catch { }
         }
@@ -67,8 +67,12 @@ public partial class MainWindow
             {
                 case "removeLink":
                 case "addLink":
+                case "editLink":
                 case "moveLink":
                     OnStartLinks(cmd, r);
+                    break;
+                case "suggest":
+                    InternalPages.Post(core, SuggestPayload(Str("ws")));
                     break;
                 case "init":
                     if (PayloadFor(Str("page"), r) is { } payload) InternalPages.Post(core, payload);
@@ -244,6 +248,7 @@ public partial class MainWindow
         var ws = _workspaces.FirstOrDefault(x => x.Id == wsId);
         if (ws == null) return;
         var url = root.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "";
+        var title = root.TryGetProperty("title", out var t) ? t.GetString()?.Trim() : null;
         if (cmd == "removeLink")
         {
             ws.Links.RemoveAll(l => l.Url == url);
@@ -252,9 +257,17 @@ public partial class MainWindow
         {
             url = UrlTools.ToUrl(url, _settings.SearchEngine);
             if (!UrlTools.IsWeb(url)) return;
-            var title = root.TryGetProperty("title", out var t) ? t.GetString() : null;
-            if (string.IsNullOrWhiteSpace(title)) title = UrlTools.SiteKey(UrlTools.Host(url));
-            ws.Links.Add(new QuickLink { Title = title.Trim(), Url = url });
+            if (ws.Links.Any(l => l.Url == url)) { StartLinksChanged(); return; }
+            ws.Links.Add(new QuickLink { Title = string.IsNullOrEmpty(title) ? UrlTools.SiteKey(UrlTools.Host(url)) : title, Url = url });
+            FetchStartLogos(new[] { url });
+        }
+        else if (cmd == "editLink")
+        {
+            if (ws.Links.FirstOrDefault(l => l.Url == url) is not { } link) return;
+            var newUrl = UrlTools.ToUrl(root.TryGetProperty("newUrl", out var nu) ? nu.GetString() ?? "" : url, _settings.SearchEngine);
+            if (UrlTools.IsWeb(newUrl)) link.Url = newUrl;
+            link.Title = string.IsNullOrEmpty(title) ? UrlTools.SiteKey(UrlTools.Host(link.Url)) : title;
+            FetchStartLogos(new[] { link.Url });
         }
         else if (cmd == "moveLink")
         {
@@ -265,8 +278,7 @@ public partial class MainWindow
             ws.Links.RemoveAt(from);
             ws.Links.Insert(to, link);
         }
-        StartPage.Write(_workspaces, _settings);
-        QueueSave();
+        StartLinksChanged();
     }
 
     void OpenFromPage(BrowserTab tab, string url, string mode)

@@ -146,6 +146,7 @@ public partial class MainWindow : Window
 
         InternalPages.WriteAll();
         StartPage.Write(_workspaces, _settings);
+        ScheduleStartLogos();
         _ready = true;
         CreatePanelOverlay();
         ApplyLayout();
@@ -663,7 +664,7 @@ public partial class MainWindow : Window
         try { core.Profile.PreferredTrackingPreventionLevel = _settings.TrackingLevel(); } catch { }
         ApplyColorScheme(core);
 
-        core.SetVirtualHostNameToFolderMapping(UrlTools.StartHost, AppPaths.Start, CoreWebView2HostResourceAccessKind.Deny);
+        ServeStartFiles(core);
         foreach (var pattern in _blocker.Patterns)
             core.AddWebResourceRequestedFilter(pattern, CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
         core.WebResourceRequested += (_, e) => OnBlockable(core, e, tab);
@@ -686,6 +687,7 @@ public partial class MainWindow : Window
             tab.IsLoading = false;
             tab.PendingUrl = null;
             if (HttpsFallback(core, tab, e)) return;
+            if (StartPageCompleted(core, tab, e)) return;
             if (e.IsSuccess && !tab.IsPrivate) _history.Add(core.Source, core.DocumentTitle);
             if (e.IsSuccess) CheckReadable(tab, core);
             if (tab == _current?.ActiveTab) UpdateChrome();
@@ -796,7 +798,7 @@ public partial class MainWindow : Window
 
     void OnBlockable(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs e, BrowserTab? tab)
     {
-        if (!_settings.AdBlock || _env == null) return;
+        if (!_settings.AdBlock || _env == null || UrlTools.IsStart(e.Request.Uri)) return;
         var site = UrlTools.SiteKey(UrlTools.Host(tab?.PendingUrl ?? core.Source));
         if (_settings.IsAllowed(site)) return;
         // Если человек сам открыл такой адрес — не мешаем.
@@ -1137,8 +1139,8 @@ public partial class MainWindow : Window
         if (ws.Links.Any(l => l.Url == tab.Url)) { ShowToast($"Уже есть на стартовой «{ws.Name}»"); return; }
         var title = tab.Title.Length > 40 ? tab.Title[..40].TrimEnd() + "…" : tab.Title;
         ws.Links.Add(new QuickLink { Title = title, Url = tab.Url });
-        StartPage.Write(_workspaces, _settings);
-        QueueSave();
+        StartLinksChanged();
+        FetchStartLogos(new[] { tab.Url });
         ShowToast($"Добавлено на стартовую «{ws.Name}»");
     }
 
