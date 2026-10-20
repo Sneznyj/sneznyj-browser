@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>История</title>
+<link id="theme" rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="ui.css">
+<style>
+  .item .title { flex: 0 1 auto }
+  .count { color: var(--muted); font-size: 13px }
+  .more { display: block; margin: 16px auto 0 }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="side" id="side"></aside>
+  <main>
+    <div class="head">
+      <h2>История</h2>
+      <div class="search"><span id="sIcon"></span><input type="search" id="q" placeholder="Искать в истории" autofocus></div>
+      <button class="btn danger" id="clear">Очистить историю</button>
+    </div>
+    <div class="sub" id="info"></div>
+    <div id="list"></div>
+  </main>
+</div>
+<script src="ui.js"></script>
+<script>
+(() => {
+  $('#side').append(el('h1', null, icon('snow'), 'Снежный'), ...sideNav('history'));
+  $('#sIcon').replaceWith(icon('search'));
+  let items = [], shown = 300, q = '';
+
+  function render() {
+    const list = $('#list'); list.textContent = '';
+    if (!items.length) {
+      list.append(el('div', { class: 'empty' }, icon('clock'), q ? 'Ничего не нашлось' : 'История пуста. Приватные вкладки сюда не попадают.'));
+      return;
+    }
+    let lastDay = '', box = null;
+    for (const h of items.slice(0, shown)) {
+      const d = new Date(h.last);
+      const day = d.toDateString();
+      if (day !== lastDay) {
+        lastDay = day;
+        list.append(el('div', { class: 'day', text: dayTitle(d) }));
+        box = el('div', { class: 'list' });
+        list.append(box);
+      }
+      const row = el('div', { class: 'item', title: h.url, tabindex: 0,
+        onclick: e => openUrl(h.url, e), onauxclick: e => { if (e.button === 1) openUrl(h.url, e); },
+        onkeydown: e => { if (e.key === 'Enter') openUrl(h.url, e); if (e.key === 'Delete') del(h.url); } },
+        el('span', { class: 'time', text: d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) }),
+        favicon(h.url, h.fav, h.title),
+        el('div', { class: 'main' }, el('span', { class: 'title', text: h.title || h.url }), el('span', { class: 'host', text: hostOf(h.url) })),
+        el('div', { class: 'acts' },
+          el('button', { class: 'icon-btn', title: 'Открыть в новой вкладке', html: ICONS.open, onclick: e => { e.stopPropagation(); Bridge.post({ cmd: 'open', url: h.url, mode: 'new' }); } }),
+          el('button', { class: 'icon-btn', title: 'Удалить из истории', html: ICONS.x, onclick: e => { e.stopPropagation(); del(h.url); } })));
+      box.append(row);
+    }
+    if (items.length > shown) list.append(el('button', { class: 'btn more', text: `Показать ещё (${items.length - shown})`, onclick: () => { shown += 300; render(); } }));
+  }
+
+  function del(url) {
+    items = items.filter(h => h.url !== url);
+    Bridge.post({ cmd: 'historyDelete', urls: [url], q });
+    render();
+  }
+
+  let timer = 0;
+  $('#q').addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { q = $('#q').value.trim(); shown = 300; Bridge.post({ cmd: 'history', q }); }, 160);
+  });
+  $('#clear').onclick = async () => {
+    if (await confirmBox('Очистить всю историю?', 'Удалятся история посещений и кэш. Закладки, пароли и входы на сайтах останутся.', 'Очистить'))
+      Bridge.post({ cmd: 'historyClear' });
+  };
+  Bridge.on('history', m => {
+    items = m.items; q = m.q || '';
+    $('#info').textContent = q ? `Найдено: ${items.length}` : `Всего страниц в истории: ${m.total}. Хранится только на этом компьютере.`;
+    render();
+  });
+  Bridge.post({ cmd: 'init', page: 'history' });
+})();
+</script>
+</body>
+</html>

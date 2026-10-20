@@ -17,6 +17,10 @@ public static class StartPage
         {
             search = UrlTools.SearchTemplate(settings.SearchEngine),
             engine = UrlTools.EngineName(settings.SearchEngine),
+            bg = settings.StartBackground,
+            image = settings.StartImage is { Length: > 0 } img && File.Exists(Path.Combine(AppPaths.Start, img)) ? img : null,
+            snow = settings.StartSnow,
+            clock = settings.StartClock,
             workspaces = workspaces.Select(w => new
             {
                 id = w.Id,

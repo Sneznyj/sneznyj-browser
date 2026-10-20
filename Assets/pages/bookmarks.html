@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Закладки</title>
+<link id="theme" rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="ui.css">
+<style>
+  .cols { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; align-items: start }
+  .tree { background: var(--toolbar); border: 1px solid var(--line); border-radius: 16px; padding: 6px; position: sticky; top: 20px }
+  .folder { display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 9px; cursor: pointer; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+  .folder:hover { background: var(--hover); color: var(--text) }
+  .folder.on { background: var(--selected); color: var(--text); font-weight: 600 }
+  .folder.drop { outline: 2px dashed var(--accent); outline-offset: -2px }
+  .folder svg { width: 17px; height: 17px; flex: none; color: var(--warn) }
+  .folder .n { margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 400 }
+  .item.dragging { opacity: .4 }
+  .item.over-top { box-shadow: inset 0 2px 0 var(--accent) }
+  .item.over-bottom { box-shadow: inset 0 -2px 0 var(--accent) }
+  .item.over-in { outline: 2px dashed var(--accent); outline-offset: -2px }
+  .item .fico { width: 18px; height: 18px; color: var(--warn); flex: none }
+  .item .fico svg { width: 18px; height: 18px }
+  .crumbs { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; margin: 0 0 10px 4px; flex-wrap: wrap }
+  .crumbs a { cursor: pointer }
+  .imp { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; padding: 12px 0 4px }
+  .src { border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; background: var(--toolbar) }
+  .src b { font-size: 14px }
+  @media (max-width: 860px) { .cols { grid-template-columns: 1fr } .tree { position: static } }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="side" id="side"></aside>
+  <main class="wide">
+    <div class="head">
+      <h2>Закладки</h2>
+      <div class="search"><span id="sIcon"></span><input type="search" id="q" placeholder="Искать в закладках"></div>
+      <button class="btn" id="addFolder"></button>
+      <button class="btn primary" id="addLink"></button>
+    </div>
+    <div class="cols">
+      <div class="tree" id="tree"></div>
+      <div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="list" id="list"></div>
+        <section id="import" style="margin-top:30px">
+          <h3>Перенести закладки из другого браузера</h3>
+          <div class="sub">Закладки копируются с этого компьютера, ничего никуда не отправляется. Повторный перенос добавит только новые.</div>
+          <div class="imp" id="sources"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="ui.js"></script>
+<script>
+(() => {
+  $('#side').append(el('h1', null, icon('snow'), 'Снежный'), ...sideNav('bookmarks'));
+  $('#sIcon').replaceWith(icon('search'));
+  $('#addFolder').append(icon('folder'), 'Папка');
+  $('#addLink').append(icon('plus'), 'Закладка');
+  let T = { bar: [], other: [] }, cur = 'bar', sources = [];
+  const ROOTS = { bar: 'Панель закладок', other: 'Другие закладки' };
+
+  function find(id, list = [...T.bar, ...T.other], path = []) {
+    for (const n of list) {
+      if (n.id === id) return { node: n, path };
+      if (n.children) { const r = find(id, n.children, [...path, n]); if (r) return r; }
+    }
+    return null;
+  }
+  function rootOf(id) {
+    const inList = (list) => list.some(n => n.id === id || (n.children && inList(n.children)));
+    return inList(T.other) ? 'other' : 'bar';
+  }
+  const childrenOf = id => id === 'bar' ? T.bar : id === 'other' ? T.other : (find(id)?.node.children || []);
+  const count = list => list.reduce((s, n) => s + (n.children ? count(n.children) : 1), 0);
+
+  // Перетаскивание: закладку можно поставить выше/ниже другой или бросить в папку (в списке и в дереве слева).
+  let dragId = null;
+  function dropTarget(node, row) {
+    row.addEventListener('dragover', e => {
+      if (!dragId || dragId === node?.id) return;
+      e.preventDefault();
+      const r = row.getBoundingClientRect(), y = e.clientY - r.top;
+      row.classList.remove('over-top', 'over-bottom', 'over-in');
+      if (node?.children && y > r.height * .25 && y < r.height * .75) row.classList.add('over-in');
+      else row.classList.add(y < r.height / 2 ? 'over-top' : 'over-bottom');
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('over-top', 'over-bottom', 'over-in'));
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      const cls = row.classList;
+      const list = childrenOf(cur);
+      let index = list.findIndex(n => n.id === node.id);
+      if (cls.contains('over-in')) Bridge.post({ cmd: 'bookmarkMove', id: dragId, folder: node.id, index: -1 });
+      else {
+        const from = list.findIndex(n => n.id === dragId);
+        if (cls.contains('over-bottom')) index++;
+        if (from >= 0 && from < index) index--;
+        Bridge.post({ cmd: 'bookmarkMove', id: dragId, folder: cur, index });
+      }
+      cls.remove('over-top', 'over-bottom', 'over-in');
+    });
+  }
+
+  function renderTree() {
+    const tree = $('#tree'); tree.textContent = '';
+    const add = (id, name, depth, n) => {
+      const f = el('div', { class: 'folder' + (cur === id ? ' on' : ''), style: { paddingLeft: 10 + depth * 16 + 'px' }, onclick: () => { cur = id; $('#q').value = ''; render(); } },
+        icon('folder'), el('span', { text: name }), el('span', { class: 'n', text: String(count(childrenOf(id))) }));
+      f.addEventListener('dragover', e => { if (dragId && dragId !== id) { e.preventDefault(); f.classList.add('drop'); } });
+      f.addEventListener('dragleave', () => f.classList.remove('drop'));
+      f.addEventListener('drop', e => { e.preventDefault(); f.classList.remove('drop'); Bridge.post({ cmd: 'bookmarkMove', id: dragId, folder: id, index: -1 }); });
+      tree.append(f);
+      for (const c of childrenOf(id).filter(c => c.children)) add(c.id, c.title, depth + 1, c);
+    };
+    add('bar', ROOTS.bar, 0);
+    add('other', ROOTS.other, 0);
+  }
+
+  function row(n, showPath) {
+    const isFolder = !!n.children;
+    const r = el('div', { class: 'item', draggable: !showPath, title: isFolder ? n.title : n.url,
+      onclick: e => { if (e.target.closest('button')) return; isFolder ? (cur = n.id, render()) : openUrl(n.url, e); },
+      onauxclick: e => { if (e.button === 1 && !isFolder) openUrl(n.url, e); } },
+      isFolder ? el('span', { class: 'fico', html: ICONS.folder }) : favicon(n.url, n.fav, n.title),
+      el('div', { class: 'main' }, el('span', { class: 'title', text: n.title }),
+        el('span', { class: 'host', text: isFolder ? `${count(n.children)} шт.` : hostOf(n.url) })),
+      el('div', { class: 'acts' },
+        isFolder ? null : el('button', { class: 'icon-btn', title: 'Открыть в новой вкладке', html: ICONS.open, onclick: () => Bridge.post({ cmd: 'open', url: n.url, mode: 'new' }) }),
+        el('button', { class: 'icon-btn', title: 'Изменить', html: ICONS.edit, onclick: () => edit(n) }),
+        el('button', { class: 'icon-btn', title: 'Удалить', html: ICONS.trash, onclick: () => remove(n) })));
+    r.addEventListener('dragstart', e => { dragId = n.id; r.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', n.title); });
+    r.addEventListener('dragend', () => { dragId = null; r.classList.remove('dragging'); });
+    dropTarget(n, r);
+    return r;
+  }
+
+  function render() {
+    renderTree();
+    const q = $('#q').value.trim().toLowerCase();
+    const list = $('#list'); list.textContent = '';
+    const crumbs = $('#crumbs'); crumbs.textContent = '';
+    let items;
+    if (q) {
+      const all = [];
+      const walk = l => l.forEach(n => { if (n.children) walk(n.children); else if ((n.title + ' ' + n.url).toLowerCase().includes(q)) all.push(n); });
+      walk(T.bar); walk(T.other);
+      items = all;
+      crumbs.append(`Найдено: ${all.length}`);
+    } else {
+      items = childrenOf(cur);
+      const root = cur === 'bar' || cur === 'other' ? cur : rootOf(cur);
+      crumbs.append(el('a', { text: ROOTS[root], onclick: () => { cur = root; render(); } }));
+      const f = find(cur);
+      if (f) for (const p of [...f.path, f.node]) crumbs.append(' › ', el('a', { text: p.title, onclick: () => { cur = p.id; render(); } }));
+    }
+    if (!items.length) {
+      list.append(el('div', { class: 'empty' }, icon('star'), q ? 'Ничего не нашлось' : 'Здесь пока пусто. Нажмите звёздочку в адресной строке или Ctrl+D на любом сайте.'));
+      return;
+    }
+    for (const n of items) list.append(row(n, !!q));
+  }
+
+  async function edit(n) {
+    const fields = [{ name: 'title', label: 'Название', value: n.title }];
+    if (!n.children) fields.push({ name: 'url', label: 'Адрес', value: n.url });
+    const r = await formBox(n.children ? 'Папка' : 'Закладка', fields);
+    if (r) Bridge.post({ cmd: 'bookmarkUpdate', id: n.id, title: r.title, url: r.url || '' });
+  }
+  async function remove(n) {
+    if (n.children && n.children.length && !await confirmBox(`Удалить папку «${n.title}»?`, `Вместе с ней удалятся закладки внутри: ${count(n.children)}.`)) return;
+    Bridge.post({ cmd: 'bookmarkDelete', id: n.id });
+  }
+
+  $('#addLink').onclick = async () => {
+    const r = await formBox('Новая закладка', [{ name: 'title', label: 'Название', value: '' }, { name: 'url', label: 'Адрес', value: '', placeholder: 'например youtube.com' }], 'Добавить');
+    if (r && r.url.trim()) Bridge.post({ cmd: 'bookmarkAdd', title: r.title, url: r.url, folder: cur });
+  };
+  $('#addFolder').onclick = async () => {
+    const r = await formBox('Новая папка', [{ name: 'title', label: 'Название', value: '' }], 'Создать');
+    if (r) Bridge.post({ cmd: 'bookmarkFolder', title: r.title, parent: cur });
+  };
+  $('#q').addEventListener('input', render);
+
+  function renderSources() {
+    const box = $('#sources'); box.textContent = '';
+    for (const s of sources)
+      box.append(el('div', { class: 'src' }, el('b', { text: s.name }),
+        el('div', { class: 'muted', text: s.found ? 'Нашёл закладки на этом компьютере' : 'Не установлен или закладок нет' }),
+        el('button', { class: 'btn' + (s.found ? ' primary' : ''), disabled: !s.found, onclick: () => Bridge.post({ cmd: 'import', source: s.id }) }, icon('import'), 'Перенести')));
+  }
+
+  Bridge.on('bookmarks', m => {
+    T = m.tree; sources = m.sources;
+    if (cur !== 'bar' && cur !== 'other' && !find(cur)) cur = 'bar';
+    render(); renderSources();
+  });
+  Bridge.post({ cmd: 'init', page: 'bookmarks' });
+  if (location.hash === '#import') setTimeout(() => $('#import').scrollIntoView(), 80);
+})();
+</script>
+</body>
+</html>

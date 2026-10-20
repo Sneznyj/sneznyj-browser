@@ -1,0 +1,48 @@
+<Window x:Class="SneznyjBrowser.NoticeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
+        ShowInTaskbar="False" ShowActivated="False" SizeToContent="WidthAndHeight" WindowStartupLocation="Manual"
+        FontFamily="{StaticResource UiFont}" FontSize="13" Foreground="{DynamicResource TextBrush}"
+        UseLayoutRounding="True" Topmost="False">
+    <!-- Подсказки и «Новая версия» слева внизу поверх страницы -->
+    <StackPanel Margin="10,10,22,22" Width="320">
+        <Border x:Name="UpdateCard" Visibility="Collapsed" Margin="0,0,0,8" Padding="14,12,14,14" CornerRadius="12"
+                Background="{DynamicResource NoticeBrush}" BorderBrush="{DynamicResource NoticeBorderBrush}" BorderThickness="1"
+                Effect="{StaticResource PopupShadow}">
+            <StackPanel>
+                <DockPanel>
+                    <TextBlock Text="&#xE896;" FontFamily="{StaticResource IconFont}" FontSize="14" Foreground="{DynamicResource AccentBrush}"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="UpdateHeading" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                </DockPanel>
+                <TextBlock x:Name="UpdateNotes" Margin="0,6,0,0" FontSize="12" Foreground="{DynamicResource SoftTextBrush}"
+                           TextWrapping="Wrap" MaxHeight="64" TextTrimming="WordEllipsis" LineHeight="16"/>
+                <Grid x:Name="UpdateProgress" Visibility="Collapsed" Margin="0,10,0,0">
+                    <Border x:Name="UpdateTrack" Height="4" CornerRadius="2" Background="{DynamicResource LineBrush}" VerticalAlignment="Top"/>
+                    <Border x:Name="UpdateFill" Height="4" CornerRadius="2" Background="{DynamicResource AccentBrush}"
+                            HorizontalAlignment="Left" VerticalAlignment="Top" Width="0"/>
+                    <TextBlock x:Name="UpdateStatus" Margin="0,10,0,0" FontSize="12" Foreground="{DynamicResource MutedBrush}"
+                               TextWrapping="Wrap"/>
+                </Grid>
+                <StackPanel x:Name="UpdateButtons" Orientation="Horizontal" Margin="0,10,0,0">
+                    <Button x:Name="UpdateNowBtn" Content="Обновить" Style="{StaticResource AccentButton}" Height="28" Padding="14,0"/>
+                    <Button x:Name="UpdateLaterBtn" Content="Позже" Style="{StaticResource TextButton}" Height="28" Padding="12,0" Margin="6,0,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Border x:Name="Toast" Visibility="Collapsed" Padding="14,10" CornerRadius="12" HorizontalAlignment="Left"
+                Background="{DynamicResource PopupBrush}" BorderBrush="{DynamicResource PopupBorderBrush}" BorderThickness="1"
+                Effect="{StaticResource PopupShadow}">
+            <DockPanel>
+                <Button x:Name="ToastAction" DockPanel.Dock="Right" Style="{StaticResource LinkButton}" Margin="14,0,0,0" Padding="0"
+                        Visibility="Collapsed" VerticalAlignment="Center">
+                    <TextBlock x:Name="ToastActionText" FontWeight="SemiBold" FontSize="12.5"/>
+                </Button>
+                <TextBlock x:Name="ToastText" TextWrapping="Wrap" FontSize="12.5" VerticalAlignment="Center" MaxWidth="270"/>
+            </DockPanel>
+        </Border>
+    </StackPanel>
+</Window>

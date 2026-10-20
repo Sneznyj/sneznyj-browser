@@ -3,82 +3,136 @@
 <head>
 <meta charset="utf-8">
 <title>Новая вкладка</title>
-<meta name="color-scheme" content="dark">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<link id="theme" rel="stylesheet" href="theme.css">
 <style>
-  :root { --bg:#0e1319; --card:rgba(24,33,44,.72); --card-hover:#1d2835; --line:#263241; --text:#e6edf5; --muted:#8696a9; --accent:#7cc4ff; --ws:#7cc4ff; }
   * { box-sizing:border-box }
   html, body { min-height:100%; margin:0 }
   body {
-    background: radial-gradient(1100px 620px at 50% -12%, #1a2c43 0%, rgba(14,19,25,0) 70%), var(--bg);
-    color:var(--text); font:15px/1.4 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; overflow-x:hidden;
+    background: var(--bg); color:var(--text); overflow-x:hidden;
+    font:15px/1.4 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+    --card: color-mix(in srgb, var(--toolbar) 72%, transparent); --card-hover: color-mix(in srgb, var(--surface) 92%, transparent);
+    --ink: var(--text); --ink-soft: var(--muted);
   }
-  canvas { position:fixed; inset:0; width:100%; height:100%; pointer-events:none }
-  main { position:relative; max-width:900px; margin:0 auto; padding:10vh 24px 48px; display:flex; flex-direction:column; align-items:center }
-  .ws { display:inline-flex; align-items:center; gap:8px; padding:5px 13px; border-radius:999px; background:color-mix(in srgb, var(--ws) 12%, transparent); color:var(--ws); font-size:13px; font-weight:600; letter-spacing:.02em }
+  body.photo { --card: rgba(16,20,28,.42); --card-hover: rgba(16,20,28,.6); --ink:#fff; --ink-soft: rgba(255,255,255,.78); color-scheme: dark }
+  #bg, #fx, #snow { position:fixed; inset:0; width:100%; height:100%; pointer-events:none }
+  #bg { background: radial-gradient(1100px 620px at 50% -12%, var(--glow) 0%, transparent 70%), var(--bg); background-size: cover; background-position: center }
+  main { position:relative; max-width:920px; margin:0 auto; padding:10vh 24px 48px; display:flex; flex-direction:column; align-items:center; color: var(--ink) }
+  body.noclock main { padding-top: 16vh }
+  .ws { display:inline-flex; align-items:center; gap:8px; padding:5px 13px; border-radius:999px; background:color-mix(in srgb, var(--ws) 16%, transparent); color:var(--ws); font-size:13px; font-weight:600; letter-spacing:.02em; backdrop-filter: blur(8px) }
+  body.photo .ws { background: rgba(0,0,0,.28); color:#fff }
   .ws i { width:8px; height:8px; border-radius:50%; background:var(--ws); box-shadow:0 0 10px var(--ws) }
-  .clock { margin-top:18px; font-size:72px; font-weight:300; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums }
-  .date { margin-top:10px; color:var(--muted); font-size:15px }
+  .clock { margin-top:18px; font-size:76px; font-weight:300; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums }
+  .date { margin-top:10px; color:var(--ink-soft); font-size:15px }
+  body.photo .clock, body.photo .date { text-shadow: 0 2px 18px rgba(0,0,0,.45) }
+  body.noclock .clock, body.noclock .date { display:none }
   #search { margin-top:34px; width:100%; max-width:640px; position:relative }
-  #search svg { position:absolute; left:19px; top:50%; transform:translateY(-50%); opacity:.7 }
-  input { width:100%; border:1px solid var(--line); background:rgba(22,30,40,.92); color:var(--text); font:inherit; outline:none; transition:border-color .15s, box-shadow .15s }
-  input:focus { border-color:var(--accent); box-shadow:0 0 0 4px rgba(124,196,255,.14) }
-  input::placeholder { color:#6b7b8f }
-  #q { height:54px; border-radius:27px; padding:0 22px 0 52px; font-size:16px }
-  .tiles { margin-top:40px; display:grid; grid-template-columns:repeat(auto-fill, minmax(116px, 1fr)); gap:14px; width:100%; max-width:780px }
-  .tile { position:relative; display:flex; flex-direction:column; align-items:center; gap:10px; padding:18px 8px 14px; border-radius:18px; background:var(--card); border:1px solid transparent; color:var(--text); text-decoration:none; transition:transform .15s, background .15s, border-color .15s; font:inherit; cursor:pointer }
+  #search svg { position:absolute; left:19px; top:50%; transform:translateY(-50%); opacity:.7; z-index:1; color:var(--text); pointer-events:none }
+  input { width:100%; border:1px solid var(--line); background:color-mix(in srgb, var(--surface) 92%, transparent); color:var(--text); font:inherit; outline:none; transition:border-color .15s, box-shadow .15s }
+  input:focus { border-color:var(--accent); box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent) }
+  input::placeholder { color:var(--muted) }
+  #q { height:54px; border-radius:27px; padding:0 22px 0 52px; font-size:16px; backdrop-filter: blur(10px) }
+  .tiles { margin-top:40px; display:grid; grid-template-columns:repeat(auto-fill, minmax(116px, 1fr)); gap:14px; width:100%; max-width:800px }
+  .tile { position:relative; display:flex; flex-direction:column; align-items:center; gap:10px; padding:18px 8px 14px; border-radius:18px; background:var(--card); border:1px solid transparent; color:var(--ink); text-decoration:none; transition:transform .15s, background .15s, border-color .15s; font:inherit; cursor:pointer; backdrop-filter: blur(12px) }
   .tile:hover { background:var(--card-hover); border-color:var(--line); transform:translateY(-2px) }
+  .tile.dragging { opacity:.35 }
+  .tile.over { border-color: var(--accent) }
   .ico { width:46px; height:46px; border-radius:14px; display:grid; place-items:center; overflow:hidden; font-weight:650; font-size:19px; color:#0e1319 }
   .ico.img { background:#eef3f8 }
   .ico img { width:28px; height:28px }
-  .name { font-size:12.5px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#cdd7e3 }
-  .del { position:absolute; top:7px; right:7px; width:22px; height:22px; border:0; border-radius:50%; background:#2a3747; color:#aab6c5; cursor:pointer; opacity:0; transition:opacity .15s; font-size:14px; line-height:22px; padding:0 }
+  .name { font-size:12.5px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-soft) }
+  .del { position:absolute; top:7px; right:7px; width:22px; height:22px; border:0; border-radius:50%; background:var(--surface); color:var(--muted); cursor:pointer; opacity:0; transition:opacity .15s; font-size:14px; line-height:22px; padding:0 }
   .tile:hover .del { opacity:1 }
-  .del:hover { background:#3a4a5e; color:#fff }
-  .add .ico { background:transparent; border:1.5px dashed #3a4b60; color:var(--muted); font-weight:300; font-size:26px }
+  .del:hover { color:var(--text) }
+  .add .ico { background:transparent; border:1.5px dashed var(--muted); color:var(--ink-soft); font-weight:300; font-size:26px }
   .addform { display:none; margin-top:18px; width:100%; max-width:640px; gap:10px }
   .addform.open { display:flex }
   .addform input { height:42px; border-radius:12px; padding:0 14px; font-size:14px }
   .addform input:first-child { max-width:200px }
-  .addform button { height:42px; border-radius:12px; border:0; padding:0 18px; background:var(--accent); color:#0e1319; font:inherit; font-weight:600; cursor:pointer; white-space:nowrap }
-  .hint { margin-top:44px; color:#6b7b8f; font-size:12.5px; text-align:center; line-height:2 }
-  kbd { font:12px "Segoe UI",sans-serif; padding:2px 7px; border-radius:6px; background:#1c2633; border:1px solid #2a3747; color:#aab6c5 }
+  button.primary { height:42px; border-radius:12px; border:0; padding:0 18px; background:var(--accent); color:var(--accent-text); font:inherit; font-weight:600; cursor:pointer; white-space:nowrap }
+  .hint { margin-top:44px; color:var(--ink-soft); font-size:12.5px; text-align:center; line-height:2; opacity:.85 }
+  kbd { font:12px "Segoe UI",sans-serif; padding:2px 7px; border-radius:6px; background:var(--surface); border:1px solid var(--line); color:var(--soft) }
+  #gear { position:fixed; right:18px; bottom:18px; height:40px; border-radius:20px; border:1px solid var(--line); background:var(--card); color:var(--ink); padding:0 16px 0 12px; display:flex; align-items:center; gap:8px; cursor:pointer; font:inherit; font-size:13px; backdrop-filter: blur(12px) }
+  #gear:hover { background:var(--card-hover) }
+  #panel { position:fixed; right:18px; bottom:68px; width:340px; max-height:calc(100vh - 100px); overflow:auto; background:var(--popup); border:1px solid var(--popup-border); border-radius:16px; padding:16px; box-shadow:0 18px 50px rgba(0,0,0,.35); display:none; color:var(--text) }
+  #panel.open { display:block; animation: up .15s }
+  @keyframes up { from { opacity:0; transform: translateY(8px) } }
+  #panel h4 { margin:0 0 10px; font-size:15px }
+  .bgs { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px }
+  .bg { height:58px; border-radius:10px; border:2px solid transparent; cursor:pointer; position:relative; overflow:hidden; padding:0; background-size:cover; background-position:center }
+  .bg.on { border-color:var(--accent) }
+  .bg span { position:absolute; left:6px; bottom:4px; font-size:11px; font-weight:600; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,.7) }
+  .opt { display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid var(--line); font-size:14px }
+  .opt:first-of-type { margin-top:12px }
+  .sw { position:relative; width:40px; height:22px; flex:none }
+  .sw input { position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; z-index:1 }
+  .sw span { position:absolute; inset:0; border-radius:11px; background:var(--surface); border:1px solid var(--line) }
+  .sw span::after { content:""; position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:var(--muted); transition:transform .15s }
+  .sw input:checked + span { background:var(--accent); border-color:var(--accent) }
+  .sw input:checked + span::after { transform:translateX(18px); background:var(--accent-text) }
+  .links { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap }
+  .links a { flex:1; text-align:center; padding:8px 10px; border-radius:10px; border:1px solid var(--line); background:var(--surface); color:var(--text); text-decoration:none; font-size:13px; cursor:pointer }
+  .links a:hover { background:var(--hover) }
+  .scene { position:fixed; left:0; right:0; bottom:0; width:100%; height:42vh; pointer-events:none }
 </style>
 </head>
 <body>
+<div id="bg"></div>
+<canvas id="fx"></canvas>
+<svg id="scene" class="scene" viewBox="0 0 1600 400" preserveAspectRatio="none" style="display:none"></svg>
 <canvas id="snow"></canvas>
 <main>
   <div class="ws"><i></i><span id="wsName"></span></div>
   <div class="clock" id="clock"></div>
   <div class="date" id="date"></div>
   <form id="search" autocomplete="off">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#aab6c5" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     <input id="q" placeholder="Поиск или адрес сайта">
   </form>
   <div class="tiles" id="tiles"></div>
   <form class="addform" id="addform" autocomplete="off">
     <input id="addTitle" placeholder="Название">
     <input id="addUrl" placeholder="Адрес, например youtube.com">
-    <button type="submit">Добавить</button>
+    <button class="primary" type="submit">Добавить</button>
   </form>
   <div class="hint">
     <kbd>Ctrl</kbd> <kbd>K</kbd> поиск по вкладкам, истории и командам &nbsp;·&nbsp;
-    <kbd>Ctrl</kbd> <kbd>D</kbd> добавить открытую страницу сюда &nbsp;·&nbsp;
-    <kbd>Alt</kbd> <kbd>1–9</kbd> пространства
+    <kbd>Ctrl</kbd> <kbd>D</kbd> в закладки &nbsp;·&nbsp;
+    <kbd>Alt</kbd> <kbd>1–9</kbd> пространства &nbsp;·&nbsp; плитки можно перетаскивать
   </div>
 </main>
+<button id="gear" type="button" title="Фон и вид стартовой">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 1 0 0 18c1 0 1.6-.8 1.6-1.6 0-.5-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5C21 6.4 17 3 12 3z"/></svg>
+  Фон
+</button>
+<div id="panel">
+  <h4>Фон стартовой</h4>
+  <div class="bgs" id="bgs"></div>
+  <label class="opt">Снег <span class="sw"><input type="checkbox" id="optSnow"><span></span></span></label>
+  <label class="opt">Часы и дата <span class="sw"><input type="checkbox" id="optClock"><span></span></span></label>
+  <div class="links"><a id="ownImage">Своя картинка…</a><a id="allSettings">Все настройки</a></div>
+</div>
 <script>
 const DATA = /*__DATA__*/null;
 (() => {
-  const D = DATA || { search: 'https://www.google.com/search?q={0}', engine: 'Google', workspaces: [] };
+  if (top !== self) { document.documentElement.textContent = ''; return; }
+  const D = DATA || { search: 'https://www.google.com/search?q={0}', engine: 'Google', workspaces: [], bg: 'theme', snow: true, clock: true };
   const params = new URLSearchParams(location.search);
   const ws = D.workspaces.find(w => w.id === params.get('ws')) || D.workspaces[0] || { id: '', name: '', accent: '#7cc4ff', links: [] };
   const $ = id => document.getElementById(id);
+  const post = m => { try { window.chrome.webview.postMessage(m); } catch (e) { } };
+  try {
+    window.chrome.webview.addEventListener('message', e => {
+      const m = e.data || {};
+      if (m.type === 'theme') $('theme').href = 'theme.css?v=' + Date.now();
+      if (m.type === 'startImage') { D.image = m.image; setBg('image'); }
+    });
+  } catch (e) { }
 
   document.documentElement.style.setProperty('--ws', ws.accent);
   $('wsName').textContent = ws.name;
   $('q').placeholder = `Поиск в ${D.engine} или адрес сайта`;
 
-  const post = m => { try { window.chrome.webview.postMessage(m); } catch (e) { } };
   const hasScheme = s => /^[a-z][a-z0-9+.-]*:\/\//i.test(s);
   const isLocal = s => /^(localhost|127\.0\.0\.1)(:\d+)?([/?#].*)?$/i.test(s);
   const looksUrl = s => hasScheme(s) || isLocal(s) || (!/\s/.test(s) && /^[^\s/?#]+\.[a-zа-яё]{2,}(:\d+)?([/?#].*)?$/i.test(s));
@@ -91,12 +145,15 @@ const DATA = /*__DATA__*/null;
     location.href = looksUrl(v) ? normalize(v) : D.search.replace('{0}', encodeURIComponent(v));
   });
 
+  // ───── плитки ─────
   const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
   const tiles = $('tiles');
+  let dragFrom = -1;
 
   function tile(l) {
     const a = document.createElement('a');
-    a.className = 'tile'; a.href = l.url; a.title = `${l.title}\n${l.url}`;
+    a.className = 'tile'; a.title = `${l.title}\n${l.url}`; a.draggable = true;
+    if (/^https?:\/\//i.test(l.url)) a.href = l.url;
     const ico = document.createElement('div');
     ico.className = 'ico';
     const letter = () => {
@@ -117,7 +174,21 @@ const DATA = /*__DATA__*/null;
     del.addEventListener('click', e => {
       e.preventDefault(); e.stopPropagation();
       post({ cmd: 'removeLink', ws: ws.id, url: l.url });
+      const i = ws.links.indexOf(l); if (i >= 0) ws.links.splice(i, 1);
       a.remove();
+    });
+    a.addEventListener('dragstart', e => { dragFrom = ws.links.indexOf(l); a.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    a.addEventListener('dragend', () => { a.classList.remove('dragging'); dragFrom = -1; });
+    a.addEventListener('dragover', e => { if (dragFrom >= 0) { e.preventDefault(); a.classList.add('over'); } });
+    a.addEventListener('dragleave', () => a.classList.remove('over'));
+    a.addEventListener('drop', e => {
+      e.preventDefault(); a.classList.remove('over');
+      const to = ws.links.indexOf(l);
+      if (dragFrom < 0 || to < 0 || dragFrom === to) return;
+      const [moved] = ws.links.splice(dragFrom, 1);
+      ws.links.splice(to, 0, moved);
+      post({ cmd: 'moveLink', ws: ws.id, from: dragFrom, to });
+      renderTiles();
     });
     a.append(ico, name, del);
     return a;
@@ -127,8 +198,12 @@ const DATA = /*__DATA__*/null;
   add.className = 'tile add'; add.type = 'button';
   add.innerHTML = '<div class="ico">+</div><div class="name">Добавить</div>';
   add.addEventListener('click', () => { $('addform').classList.toggle('open'); $('addUrl').focus(); });
-  ws.links.forEach(l => tiles.append(tile(l)));
-  tiles.append(add);
+  function renderTiles() {
+    tiles.textContent = '';
+    ws.links.forEach(l => tiles.append(tile(l)));
+    tiles.append(add);
+  }
+  renderTiles();
 
   $('addform').addEventListener('submit', e => {
     e.preventDefault();
@@ -138,11 +213,13 @@ const DATA = /*__DATA__*/null;
     try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { return; }
     const title = $('addTitle').value.trim() || host;
     post({ cmd: 'addLink', ws: ws.id, title, url });
-    tiles.insertBefore(tile({ title, url, host }), add);
+    ws.links.push({ title, url, host });
+    renderTiles();
     $('addTitle').value = $('addUrl').value = '';
     $('addform').classList.remove('open');
   });
 
+  // ───── часы ─────
   const clock = () => {
     const d = new Date();
     $('clock').textContent = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -151,26 +228,152 @@ const DATA = /*__DATA__*/null;
   };
   clock(); setInterval(clock, 5000);
 
-  // Лёгкий снег. Останавливается сам, когда вкладка скрыта.
-  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  // ───── фоны ─────
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const fx = $('fx'), fxc = fx.getContext('2d');
+  let fxMode = '', fxRaf = 0;
+  const BGS = {
+    theme: { name: 'Как у темы', css: '' },
+    aurora: { name: 'Северное сияние', css: 'linear-gradient(180deg, #030a14 0%, #071a2b 55%, #0b2236 100%)', photo: true, fx: 'aurora' },
+    sunset: { name: 'Закат', css: 'linear-gradient(180deg, #2b1c50 0%, #7e3a74 32%, #d0596b 58%, #f08a5d 78%, #f9c784 100%)', photo: true, scene: 'sunset' },
+    ocean: { name: 'Океан', css: 'linear-gradient(180deg, #021526 0%, #03346e 45%, #1e6fa8 75%, #4f9fd0 100%)', photo: true, fx: 'waves' },
+    mountains: { name: 'Горы', css: 'linear-gradient(180deg, #13223a 0%, #2c4a72 38%, #6f92bd 68%, #c9d9ec 100%)', photo: true, scene: 'mountains' },
+    space: { name: 'Космос', css: 'radial-gradient(70% 60% at 72% 28%, #3b2a7a 0%, #160d36 45%, #05030c 100%)', photo: true, fx: 'stars' },
+    plain: { name: 'Однотонный', css: 'var(--bg)' },
+    image: { name: 'Своя картинка', photo: true },
+  };
+
+  function scene(kind) {
+    const svg = $('scene');
+    if (!kind) { svg.style.display = 'none'; svg.innerHTML = ''; return; }
+    svg.style.display = 'block';
+    svg.innerHTML = kind === 'sunset'
+      ? '<circle cx="1050" cy="250" r="120" fill="#ffd9a0" opacity=".85"/>' +
+        '<path d="M0 260 L180 170 L320 230 L470 140 L640 240 L820 160 L980 250 L1150 180 L1320 240 L1480 170 L1600 220 L1600 400 L0 400Z" fill="#5a2a5e" opacity=".85"/>' +
+        '<path d="M0 320 L200 250 L380 300 L560 230 L760 310 L940 260 L1120 320 L1300 270 L1480 320 L1600 290 L1600 400 L0 400Z" fill="#33183d"/>'
+      : '<path d="M0 230 L160 120 L270 190 L420 60 L560 200 L700 110 L860 220 L1010 90 L1160 210 L1300 130 L1460 220 L1600 150 L1600 400 L0 400Z" fill="#8aa7c9" opacity=".8"/>' +
+        '<path d="M420 60 L470 100 L445 98 L430 120 L410 95 L385 100Z M1010 90 L1055 130 L1030 125 L1015 145 L995 122 L970 128Z" fill="#eef4fb" opacity=".9"/>' +
+        '<path d="M0 290 L140 220 L300 280 L470 200 L640 290 L800 230 L980 300 L1150 240 L1330 300 L1480 250 L1600 280 L1600 400 L0 400Z" fill="#4c6c95"/>' +
+        '<path d="M0 350 L220 300 L420 345 L620 310 L860 360 L1080 315 L1300 355 L1600 320 L1600 400 L0 400Z" fill="#26405f"/>';
+  }
+
+  function startFx(mode) {
+    cancelAnimationFrame(fxRaf);
+    fxMode = mode || '';
+    const W = () => fx.width = innerWidth * devicePixelRatio, H = () => fx.height = innerHeight * devicePixelRatio;
+    W(); H();
+    fxc.clearRect(0, 0, fx.width, fx.height);
+    if (!fxMode) return;
+    const stars = Array.from({ length: 220 }, () => ({ x: Math.random(), y: Math.random(), r: Math.random() * 1.3 + .3, p: Math.random() * 6.28 }));
+    const draw = t => {
+      if (fx.width !== innerWidth * devicePixelRatio) { W(); H(); }
+      const w = fx.width, h = fx.height;
+      fxc.clearRect(0, 0, w, h);
+      if (fxMode === 'aurora') {
+        fxc.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 4; i++) {
+          const g = fxc.createLinearGradient(0, 0, 0, h * .8);
+          const col = ['56,220,160', '60,180,220', '140,110,240', '40,240,190'][i];
+          g.addColorStop(0, `rgba(${col},0)`); g.addColorStop(.45, `rgba(${col},.22)`); g.addColorStop(1, `rgba(${col},0)`);
+          fxc.fillStyle = g;
+          fxc.beginPath();
+          const base = h * (.22 + i * .06);
+          fxc.moveTo(0, h);
+          for (let x = 0; x <= w; x += w / 60) {
+            const y = base + Math.sin(x / w * 6 + t / 2600 + i * 1.7) * h * .08 + Math.sin(x / w * 13 - t / 1900 + i) * h * .03;
+            fxc.lineTo(x, y);
+          }
+          fxc.lineTo(w, h); fxc.closePath(); fxc.fill();
+        }
+        fxc.globalCompositeOperation = 'source-over';
+        fxc.fillStyle = 'rgba(255,255,255,.8)';
+        for (const s of stars.slice(0, 90)) { fxc.globalAlpha = .4 + .4 * Math.sin(t / 900 + s.p); fxc.beginPath(); fxc.arc(s.x * w, s.y * h * .6, s.r * devicePixelRatio, 0, 6.283); fxc.fill(); }
+        fxc.globalAlpha = 1;
+      } else if (fxMode === 'stars') {
+        fxc.fillStyle = '#fff';
+        for (const s of stars) { fxc.globalAlpha = .35 + .55 * Math.abs(Math.sin(t / 1400 + s.p)); fxc.beginPath(); fxc.arc(s.x * w, s.y * h, s.r * devicePixelRatio, 0, 6.283); fxc.fill(); }
+        fxc.globalAlpha = 1;
+      } else if (fxMode === 'waves') {
+        for (let i = 0; i < 5; i++) {
+          fxc.beginPath();
+          const base = h * (.62 + i * .08);
+          for (let x = 0; x <= w; x += 8) {
+            const y = base + Math.sin(x / (180 + i * 40) + t / (1800 - i * 150) + i) * (10 + i * 4) * devicePixelRatio;
+            x === 0 ? fxc.moveTo(x, y) : fxc.lineTo(x, y);
+          }
+          fxc.lineTo(w, h); fxc.lineTo(0, h); fxc.closePath();
+          fxc.fillStyle = `rgba(${20 + i * 10},${80 + i * 22},${150 + i * 18},${.18 + i * .06})`;
+          fxc.fill();
+        }
+      }
+      if (!reduce) fxRaf = requestAnimationFrame(draw);
+    };
+    fxRaf = requestAnimationFrame(draw);
+  }
+
+  function setBg(id) {
+    const b = BGS[id] || BGS.theme;
+    D.bg = BGS[id] ? id : 'theme';
+    const bg = $('bg');
+    if (D.bg === 'image' && D.image) { bg.style.background = `linear-gradient(rgba(0,0,0,.18), rgba(0,0,0,.28)), url("${encodeURI(D.image)}") center / cover no-repeat`; }
+    else if (D.bg === 'image') { bg.style.background = ''; }
+    else bg.style.background = b.css || '';
+    document.body.classList.toggle('photo', !!b.photo && !(D.bg === 'image' && !D.image));
+    scene(b.scene);
+    startFx(b.fx);
+    document.querySelectorAll('.bg').forEach(x => x.classList.toggle('on', x.dataset.id === D.bg));
+  }
+
+  // ───── снег ─────
+  let snowOn = D.snow !== false, snowRaf = 0;
+  function startSnow() {
     const c = $('snow'), x = c.getContext('2d');
+    cancelAnimationFrame(snowRaf);
+    x.clearRect(0, 0, c.width, c.height);
+    if (!snowOn || reduce) return;
     let W = 0, H = 0, last = performance.now();
     const resize = () => { W = c.width = innerWidth * devicePixelRatio; H = c.height = innerHeight * devicePixelRatio; };
     resize(); addEventListener('resize', resize);
     const flakes = Array.from({ length: 70 }, () => ({ x: Math.random(), y: Math.random(), r: Math.random() * 1.6 + .6, s: Math.random() * .25 + .08, d: Math.random() * 6.28 }));
     const tick = t => {
+      if (!snowOn) return;
       const dt = Math.min(50, t - last) / 16.7; last = t;
       x.clearRect(0, 0, W, H);
-      x.fillStyle = 'rgba(220,236,255,.5)';
+      x.fillStyle = getComputedStyle(document.body).colorScheme === 'light' && !document.body.classList.contains('photo') ? 'rgba(120,150,190,.45)' : 'rgba(220,236,255,.55)';
       for (const f of flakes) {
         f.y += f.s * dt * .005; f.d += .01 * dt; f.x += Math.sin(f.d) * .0003 * dt;
         if (f.y > 1.02) { f.y = -.02; f.x = Math.random(); }
         x.beginPath(); x.arc(f.x * W, f.y * H, f.r * devicePixelRatio, 0, 6.283); x.fill();
       }
-      requestAnimationFrame(tick);
+      snowRaf = requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    snowRaf = requestAnimationFrame(tick);
   }
+
+  // ───── панель «Фон» ─────
+  const bgs = $('bgs');
+  const preview = { theme: 'radial-gradient(120% 90% at 50% 0%, var(--glow), var(--bg) 70%)', plain: 'var(--bg)' };
+  for (const [id, b] of Object.entries(BGS)) {
+    if (id === 'image' && !D.image) continue;
+    const btn = document.createElement('button');
+    btn.className = 'bg'; btn.type = 'button'; btn.dataset.id = id;
+    btn.style.background = id === 'image' ? `url("${encodeURI(D.image)}") center / cover` : (preview[id] || b.css);
+    const s = document.createElement('span'); s.textContent = b.name; btn.append(s);
+    btn.onclick = () => { setBg(id); post({ cmd: 'set', key: 'startBackground', value: id }); };
+    bgs.append(btn);
+  }
+  $('gear').onclick = e => { e.stopPropagation(); $('panel').classList.toggle('open'); };
+  document.addEventListener('click', e => { if (!$('panel').contains(e.target)) $('panel').classList.remove('open'); });
+  $('optSnow').checked = snowOn;
+  $('optSnow').onchange = () => { snowOn = $('optSnow').checked; startSnow(); post({ cmd: 'set', key: 'startSnow', value: snowOn }); };
+  $('optClock').checked = D.clock !== false;
+  $('optClock').onchange = () => { document.body.classList.toggle('noclock', !$('optClock').checked); post({ cmd: 'set', key: 'startClock', value: $('optClock').checked }); };
+  $('ownImage').onclick = () => post({ cmd: 'pickStartImage' });
+  $('allSettings').onclick = () => post({ cmd: 'open', url: 'https://start.sneznyj/settings.html#start', mode: 'same' });
+
+  document.body.classList.toggle('noclock', D.clock === false);
+  setBg(D.bg);
+  startSnow();
 })();
 </script>
 </body>

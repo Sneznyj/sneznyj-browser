@@ -25,6 +25,7 @@
     <Resource Include="Assets\app.ico" />
     <EmbeddedResource Include="Assets\blocklist.txt" LogicalName="blocklist.txt" />
     <EmbeddedResource Include="Assets\start.html" LogicalName="start.html" />
+    <EmbeddedResource Include="Assets\pages\*" LogicalName="pages/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

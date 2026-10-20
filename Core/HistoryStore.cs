@@ -72,6 +72,18 @@ public sealed class HistoryStore
     static double Score(HistoryEntry e) =>
         Math.Log(1 + e.Visits) * 3 + 10.0 / (1 + (DateTime.Now - e.Last).TotalDays);
 
+    public IReadOnlyList<HistoryEntry> All => _items;
+
+    public void Remove(string url)
+    {
+        if (!_byUrl.Remove(url, out var e)) return;
+        _items.Remove(e);
+        _dirty = true;
+    }
+
+    /// <summary>Сайты, которые чаще всего открывают (для подсказки адреса прямо в строке).</summary>
+    public IEnumerable<HistoryEntry> Ranked() => _items.OrderByDescending(Score);
+
     public void Clear()
     {
         _items.Clear();

@@ -3,340 +3,812 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:SneznyjBrowser"
         Title="Снежный браузер" Width="1360" Height="860" MinWidth="760" MinHeight="480"
-        Background="{StaticResource BgBrush}" Foreground="{StaticResource TextBrush}"
+        Background="{DynamicResource BgBrush}" Foreground="{DynamicResource TextBrush}"
         FontFamily="{StaticResource UiFont}" FontSize="13"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         Icon="Assets/app.ico">
 
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="46" ResizeBorderThickness="6" GlassFrameThickness="0,0,0,1"
+        <WindowChrome CaptionHeight="40" ResizeBorderThickness="6" GlassFrameThickness="0,0,0,1"
                       UseAeroCaptionButtons="False" CornerRadius="0"/>
     </WindowChrome.WindowChrome>
 
+    <Window.Resources>
+        <!-- Меню пространства (правый клик по значку) -->
+        <ContextMenu x:Key="WorkspaceMenu" x:Shared="False">
+            <MenuItem Header="Переименовать" Click="WsRename_Click"/>
+            <MenuItem Header="Сменить значок и цвет" Click="WsLook_Click"/>
+            <Separator/>
+            <MenuItem Header="Удалить пространство" Click="WsDelete_Click"/>
+        </ContextMenu>
+
+        <!-- Значок вкладки: favicon, запасной значок или крутилка загрузки -->
+        <DataTemplate x:Key="TabIcon" DataType="{x:Type local:BrowserTab}">
+            <Grid Width="16" Height="16">
+                <TextBlock x:Name="FallbackIcon" Text="{Binding FallbackGlyph}" FontFamily="{StaticResource IconFont}" FontSize="13"
+                           Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Image x:Name="FavImage" Source="{Binding Favicon}" Width="16" Height="16" RenderOptions.BitmapScalingMode="HighQuality"/>
+                <Path x:Name="Spinner" Visibility="Collapsed" Width="14" Height="14" Stroke="{DynamicResource AccentBrush}"
+                      StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Data="M 7,1 A 6,6 0 1 1 1,7" RenderTransformOrigin="0.5,0.5">
+                    <Path.RenderTransform>
+                        <RotateTransform/>
+                    </Path.RenderTransform>
+                </Path>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding HasFavicon}" Value="True">
+                    <Setter TargetName="FallbackIcon" Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsPrivate}" Value="True">
+                    <Setter TargetName="FallbackIcon" Property="Foreground" Value="{DynamicResource PrivateBrush}"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                    <Setter TargetName="Spinner" Property="Visibility" Value="Visible"/>
+                    <Setter TargetName="FavImage" Property="Visibility" Value="Collapsed"/>
+                    <Setter TargetName="FallbackIcon" Property="Visibility" Value="Collapsed"/>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard x:Name="SpinStoryboard">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetName="Spinner"
+                                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
+                                                 From="0" To="360" Duration="0:0:0.8" RepeatBehavior="Forever"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <StopStoryboard BeginStoryboardName="SpinStoryboard"/>
+                    </DataTrigger.ExitActions>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- Кнопка приложения боковой панели (Telegram, почта…) -->
+        <DataTemplate x:Key="PanelAppIcon" DataType="{x:Type local:PanelApp}">
+            <Button x:Name="Btn" Style="{StaticResource IconButton}" Width="36" Height="34" Click="PanelApp_Click" ToolTip="{Binding Name}"
+                    Content="{Binding Glyph}" FontSize="15"/>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsShown}" Value="True">
+                    <Setter TargetName="Btn" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                    <Setter TargetName="Btn" Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <DataTemplate x:Key="PanelAppRow" DataType="{x:Type local:PanelApp}">
+            <Button x:Name="Btn" Style="{StaticResource RowButton}" Click="PanelApp_Click" Margin="0,0,0,1">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22"
+                               VerticalAlignment="Center" Margin="3,0,8,0" TextAlignment="Center"/>
+                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsShown}" Value="True">
+                    <Setter TargetName="Btn" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </Window.Resources>
+
     <Grid x:Name="RootGrid">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition x:Name="SidebarCol" Width="248"/>
+            <ColumnDefinition x:Name="LeftCol" Width="Auto"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
-        <Grid.RowDefinitions>
-            <RowDefinition x:Name="TopRow" Height="46"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
 
-        <!-- Логотип -->
-        <StackPanel x:Name="BrandPanel" Grid.Row="0" Grid.Column="0" Orientation="Horizontal"
-                    VerticalAlignment="Center" Margin="18,0,0,0">
-            <Path x:Name="LogoPath" Stroke="{StaticResource AccentBrush}" StrokeThickness="1.7"
-                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="20" Height="20"/>
-            <TextBlock Text="Снежный" Margin="10,0,0,0" FontSize="14.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
-        </StackPanel>
+        <!-- ═══════════ Левая колонка: узкая полоска или закреплённая панель ═══════════ -->
+        <Grid x:Name="LeftHost" Grid.Column="0">
 
-        <!-- Верхняя панель: навигация, адрес, действия, кнопки окна -->
-        <Grid x:Name="TopBar" Grid.Row="0" Grid.Column="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+            <!-- Узкая полоска со значками (режим «раскрывается при наведении») -->
+            <Grid x:Name="Rail" Width="52" Background="{DynamicResource BgBrush}" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition x:Name="RailHeaderRow" Height="40"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Border Grid.RowSpan="4" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0"/>
+                <Button Style="{StaticResource IconButton}" Width="36" Height="34" Click="PanelPin_Click"
+                        ToolTip="Закрепить левую панель" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Path x:Name="RailLogo" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.6"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="18" Height="18"/>
+                </Button>
 
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
-                <Button x:Name="BackBtn" Style="{StaticResource IconButton}" Content="&#xE72B;" ToolTip="Назад (Alt+←)" Click="Back_Click"/>
-                <Button x:Name="ForwardBtn" Style="{StaticResource IconButton}" Content="&#xE72A;" ToolTip="Вперёд (Alt+→)" Click="Forward_Click"/>
-                <Button x:Name="ReloadBtn" Style="{StaticResource IconButton}" Content="&#xE72C;" ToolTip="Обновить (F5)" Click="Reload_Click"/>
-            </StackPanel>
+                <StackPanel Grid.Row="1" HorizontalAlignment="Center">
+                    <ItemsControl x:Name="RailWorkspaces" Focusable="False">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type local:Workspace}">
+                                <Button Style="{StaticResource WorkspaceButton}" Margin="0,0,0,3" Click="Workspace_Click"
+                                        ToolTip="{Binding Name}" ContextMenu="{StaticResource WorkspaceMenu}">
+                                    <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="15"
+                                               Foreground="{Binding AccentBrush}"/>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Border Height="1" Background="{DynamicResource LineBrush}" Margin="8,4,8,6"/>
+                </StackPanel>
 
-            <Border x:Name="AddressBorder" Grid.Column="1" Height="34" CornerRadius="10" VerticalAlignment="Center"
-                    Background="{StaticResource SurfaceBrush}" BorderBrush="Transparent" BorderThickness="1"
-                    WindowChrome.IsHitTestVisibleInChrome="True" Cursor="IBeam">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="34"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="SecurityIcon" FontFamily="{StaticResource IconFont}" Text="&#xE721;" FontSize="12.5"
-                               Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                               Background="Transparent" Cursor="Arrow"/>
-                    <TextBlock x:Name="AddressPlaceholder" Grid.Column="1" Text="Поиск или адрес сайта"
-                               Foreground="{StaticResource MutedBrush}" FontSize="13.5" IsHitTestVisible="False"
-                               VerticalAlignment="Center" Margin="2,0,0,0"/>
-                    <TextBox x:Name="AddressBox" Grid.Column="1" Style="{StaticResource BareTextBox}" VerticalAlignment="Center"
-                             KeyDown="AddressBox_KeyDown" TextChanged="AddressBox_TextChanged"
-                             GotKeyboardFocus="AddressBox_GotKeyboardFocus" LostKeyboardFocus="AddressBox_LostKeyboardFocus"
-                             PreviewMouseLeftButtonDown="AddressBox_PreviewMouseLeftButtonDown"/>
-                    <Border x:Name="PrivateBadge" Grid.Column="2" Visibility="Collapsed" Margin="0,0,6,0" Padding="8,2"
-                            CornerRadius="6" Background="#2A2140" VerticalAlignment="Center">
-                        <TextBlock Text="Приватная" Foreground="{StaticResource PrivateBrush}" FontSize="11.5"/>
-                    </Border>
+                <!-- Значки вкладок, когда вкладки слева -->
+                <ScrollViewer x:Name="RailTabsScroll" Grid.Row="2" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"
+                              Focusable="False">
+                    <ItemsControl x:Name="RailTabs" Focusable="False" HorizontalAlignment="Center"
+                                  PreviewMouseLeftButtonDown="Strip_PreviewMouseLeftButtonDown" PreviewMouseMove="Strip_PreviewMouseMove"
+                                  PreviewMouseLeftButtonUp="Strip_PreviewMouseLeftButtonUp" PreviewMouseDown="Strip_PreviewMouseDown"
+                                  PreviewMouseRightButtonUp="Strip_PreviewMouseRightButtonUp">
+                        <ItemsControl.Resources>
+                            <DataTemplate DataType="{x:Type local:BrowserTab}">
+                                <Grid x:Name="Root" Width="38" Height="34" Margin="0,0,0,2" Background="Transparent" ToolTip="{Binding Tip}">
+                                    <Border x:Name="Bd" CornerRadius="9" Background="Transparent"/>
+                                    <Border x:Name="GroupBar" Width="3" HorizontalAlignment="Left" Margin="0,7" CornerRadius="1.5"
+                                            Background="{Binding Group.Brush}" Visibility="Collapsed"/>
+                                    <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource TabIcon}"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    <Border x:Name="AudioDot" Width="6" Height="6" CornerRadius="3" Background="{DynamicResource AccentBrush}"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0" Visibility="Collapsed"/>
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <Trigger SourceName="Root" Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                    </Trigger>
+                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding InGroup}" Value="True">
+                                        <Setter TargetName="GroupBar" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ShowAudio}" Value="True">
+                                        <Setter TargetName="AudioDot" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                            <DataTemplate DataType="{x:Type local:TabGroup}">
+                                <Border Width="26" Height="8" Margin="0,3,0,5" CornerRadius="4" Background="{Binding Brush}" Cursor="Hand"
+                                        ToolTip="{Binding Name}"/>
+                            </DataTemplate>
+                            <DataTemplate DataType="{x:Type local:StripEnd}">
+                                <Button Style="{StaticResource IconButton}" Width="38" Height="32" Content="&#xE710;" FontSize="12"
+                                        Foreground="{DynamicResource MutedBrush}" ToolTip="Новая вкладка (Ctrl+T)" Click="NewTab_Click"/>
+                            </DataTemplate>
+                        </ItemsControl.Resources>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <StackPanel x:Name="RailServices" Grid.Row="3" HorizontalAlignment="Center" Margin="0,6,0,8">
+                    <Border Height="1" Background="{DynamicResource LineBrush}" Margin="8,0,8,6"/>
+                    <ItemsControl x:Name="RailApps" Focusable="False" ItemTemplate="{StaticResource PanelAppIcon}"/>
+                    <Button Style="{StaticResource IconButton}" Width="36" Content="&#xE728;" FontSize="15" ToolTip="Закладки (Ctrl+Shift+O)" Click="Bookmarks_Click"/>
+                    <Button Style="{StaticResource IconButton}" Width="36" Content="&#xE81C;" FontSize="15" ToolTip="История (Ctrl+H)" Click="History_Click"/>
+                    <Button Style="{StaticResource IconButton}" Width="36" Content="&#xE896;" FontSize="15" ToolTip="Загрузки (Ctrl+J)" Click="Downloads_Click"/>
+                    <Button Style="{StaticResource IconButton}" Width="36" Content="&#xE713;" FontSize="15" ToolTip="Настройки" Click="Settings_Click"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Сюда встаёт полная панель, когда она закреплена -->
+            <Border x:Name="PinnedHost" Visibility="Collapsed" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0">
+                <!-- ═══════════ Полная левая панель (закреплённая или выезжающая) ═══════════ -->
+                <Grid x:Name="LeftPanel" Width="264" Background="{DynamicResource BgBrush}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition x:Name="PanelHeaderRow" Height="40"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Margin="16,0,8,0" VerticalAlignment="Center">
+                        <Button x:Name="PinBtn" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Width="32" Height="30" FontSize="13"
+                                Content="&#xE718;" ToolTip="Закрепить панель" Click="PanelPin_Click"/>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Path x:Name="LogoPath" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.7"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="20" Height="20"/>
+                            <TextBlock Text="Снежный" Margin="10,0,0,0" FontSize="14.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </DockPanel>
+
+                    <!-- Пространства: значками (вкладки слева) или строками (вкладки сверху) -->
+                    <StackPanel Grid.Row="1" Margin="10,2,8,0">
+                        <DockPanel x:Name="WsIconsBox" LastChildFill="True">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource WorkspaceButton}" ToolTip="Новое пространство"
+                                    Click="AddWorkspace_Click" VerticalAlignment="Top" Margin="0,0,0,4">
+                                <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="{DynamicResource MutedBrush}"/>
+                            </Button>
+                            <ItemsControl x:Name="WorkspaceList" Focusable="False">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type local:Workspace}">
+                                        <Button Style="{StaticResource WorkspaceButton}" Click="Workspace_Click" ToolTip="{Binding Name}"
+                                                ContextMenu="{StaticResource WorkspaceMenu}">
+                                            <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="15"
+                                                       Foreground="{Binding AccentBrush}"/>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </DockPanel>
+
+                        <StackPanel x:Name="WsRowsBox" Visibility="Collapsed">
+                            <TextBlock Text="ПРОСТРАНСТВА" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}" Margin="6,6,0,6"/>
+                            <ItemsControl x:Name="WorkspaceRows" Focusable="False">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type local:Workspace}">
+                                        <Button x:Name="Row" Style="{StaticResource RowButton}" Click="Workspace_Click" Margin="0,0,0,2"
+                                                ContextMenu="{StaticResource WorkspaceMenu}">
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}" Foreground="{DynamicResource MutedBrush}"
+                                                           FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="15" Width="22"
+                                                           Foreground="{Binding AccentBrush}" VerticalAlignment="Center" Margin="3,0,8,0" TextAlignment="Center"/>
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                            </DockPanel>
+                                        </Button>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                                <Setter TargetName="Row" Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Style="{StaticResource RowButton}" Click="AddWorkspace_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12" Width="22" TextAlignment="Center"
+                                               Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="3,0,8,0"/>
+                                    <TextBlock Text="Новое пространство" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Вкладки списком (когда вкладки слева) -->
+                    <StackPanel x:Name="SideTabsHeader" Grid.Row="2" Margin="10,0,8,0">
+                        <DockPanel Margin="4,8,4,6">
+                            <TextBlock x:Name="WsCount" DockPanel.Dock="Right" Foreground="{DynamicResource MutedBrush}" FontSize="12"/>
+                            <TextBlock x:Name="WsTitle" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                        <Button Style="{StaticResource RowButton}" Click="NewTab_Click" ToolTip="Новая вкладка (Ctrl+T)" Margin="0,0,0,4">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12" Width="22"
+                                           Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="2,0,4,0"/>
+                                <TextBlock Text="Новая вкладка" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <ScrollViewer x:Name="SideTabsScroll" Grid.Row="3" Margin="10,0,8,0" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                        <ItemsControl x:Name="SideTabs" Focusable="False"
+                                      PreviewMouseLeftButtonDown="Strip_PreviewMouseLeftButtonDown" PreviewMouseMove="Strip_PreviewMouseMove"
+                                      PreviewMouseLeftButtonUp="Strip_PreviewMouseLeftButtonUp" PreviewMouseDown="Strip_PreviewMouseDown"
+                                      PreviewMouseRightButtonUp="Strip_PreviewMouseRightButtonUp">
+                            <ItemsControl.Resources>
+                                <DataTemplate DataType="{x:Type local:BrowserTab}">
+                                    <Grid x:Name="Root" Height="34" Margin="0,0,0,2" Background="Transparent" ToolTip="{Binding Tip}"
+                                          ToolTipService.InitialShowDelay="700">
+                                        <Border x:Name="Bd" CornerRadius="8" Background="Transparent"/>
+                                        <Border x:Name="Mark" Width="3" Height="16" CornerRadius="1.5" HorizontalAlignment="Left"
+                                                Background="{DynamicResource AccentBrush}" Visibility="Collapsed" Margin="-1,0,0,0"/>
+                                        <Border x:Name="GroupBar" Width="3" HorizontalAlignment="Left" Margin="6,6,0,6" CornerRadius="1.5"
+                                                Background="{Binding Group.Brush}" Visibility="Collapsed"/>
+                                        <Grid x:Name="Body" Margin="10,0,4,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource TabIcon}" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="TitleText" Grid.Column="1" Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center" Margin="10,0,4,0" Foreground="{DynamicResource SoftTextBrush}"/>
+                                            <Button x:Name="AudioBtn" Grid.Column="2" Style="{StaticResource TinyIconButton}" Content="&#xE767;"
+                                                    Visibility="Collapsed" ToolTip="Звук вкладки" Click="TabMute_Click"/>
+                                            <Grid Grid.Column="3" Width="22">
+                                                <TextBlock x:Name="PinMark" Text="&#xE840;" FontFamily="{StaticResource IconFont}" FontSize="11"
+                                                           Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           Visibility="Collapsed"/>
+                                                <Button x:Name="CloseBtn" Style="{StaticResource TinyIconButton}" Content="&#xE711;"
+                                                        Visibility="Hidden" ToolTip="Закрыть (Ctrl+W)" Click="TabClose_Click"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Grid>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding InGroup}" Value="True">
+                                            <Setter TargetName="GroupBar" Property="Visibility" Value="Visible"/>
+                                            <Setter TargetName="Body" Property="Margin" Value="18,0,4,0"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding ShowAudio}" Value="True">
+                                            <Setter TargetName="AudioBtn" Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsMuted}" Value="True">
+                                            <Setter TargetName="AudioBtn" Property="Content" Value="&#xE74F;"/>
+                                        </DataTrigger>
+                                        <Trigger SourceName="Root" Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                            <Setter TargetName="CloseBtn" Property="Visibility" Value="Visible"/>
+                                        </Trigger>
+                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                            <Setter TargetName="Mark" Property="Visibility" Value="Visible"/>
+                                            <Setter TargetName="CloseBtn" Property="Visibility" Value="Visible"/>
+                                            <Setter TargetName="TitleText" Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                            <Setter TargetName="PinMark" Property="Visibility" Value="Visible"/>
+                                            <Setter TargetName="CloseBtn" Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                                <DataTemplate DataType="{x:Type local:TabGroup}">
+                                    <Grid x:Name="Root" Height="30" Margin="0,2,0,2" Background="Transparent" Cursor="Hand"
+                                          ToolTip="Нажмите, чтобы свернуть или развернуть группу">
+                                        <Border x:Name="Bd" CornerRadius="8" Background="Transparent"/>
+                                        <StackPanel Orientation="Horizontal" Margin="8,0" VerticalAlignment="Center">
+                                            <TextBlock x:Name="Chevron" Text="&#xE70D;" FontFamily="{StaticResource IconFont}" FontSize="9"
+                                                       Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Width="12"/>
+                                            <Border Width="10" Height="10" CornerRadius="5" Background="{Binding Brush}" Margin="6,0,8,0"/>
+                                            <TextBlock x:Name="NameText" Text="{Binding Name}" FontWeight="SemiBold" FontSize="12.5" MaxWidth="150"
+                                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Count}" Foreground="{DynamicResource MutedBrush}" FontSize="12" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <DataTemplate.Triggers>
+                                        <Trigger SourceName="Root" Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                        </Trigger>
+                                        <DataTrigger Binding="{Binding Collapsed}" Value="True">
+                                            <Setter TargetName="Chevron" Property="Text" Value="&#xE76C;"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Name}" Value="">
+                                            <Setter TargetName="NameText" Property="Text" Value="Группа"/>
+                                            <Setter TargetName="NameText" Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                                <DataTemplate DataType="{x:Type local:StripEnd}">
+                                    <Border Height="0"/>
+                                </DataTemplate>
+                            </ItemsControl.Resources>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <!-- Закладки, история, загрузки, боковые приложения, настройки -->
+                    <StackPanel Grid.Row="4" Margin="10,6,8,0">
+                        <Border Height="1" Background="{DynamicResource LineBrush}" Margin="4,0,4,6"/>
+                        <WrapPanel x:Name="ServicesDock" HorizontalAlignment="Left">
+                            <ItemsControl x:Name="DockApps" Focusable="False" ItemTemplate="{StaticResource PanelAppIcon}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                            <Button Style="{StaticResource IconButton}" Width="36" Content="&#xE728;" FontSize="15" ToolTip="Закладки (Ctrl+Shift+O)" Click="Bookmarks_Click"/>
+                            <Button Style="{StaticResource IconButton}" Width="36" Content="&#xE81C;" FontSize="15" ToolTip="История (Ctrl+H)" Click="History_Click"/>
+                            <Button Style="{StaticResource IconButton}" Width="36" Content="&#xE896;" FontSize="15" ToolTip="Загрузки (Ctrl+J)" Click="Downloads_Click"/>
+                            <Button Style="{StaticResource IconButton}" Width="36" Content="&#xE713;" FontSize="15" ToolTip="Настройки" Click="Settings_Click"/>
+                        </WrapPanel>
+                        <StackPanel x:Name="ServicesRows" Visibility="Collapsed">
+                            <ItemsControl x:Name="RowApps" Focusable="False" ItemTemplate="{StaticResource PanelAppRow}"/>
+                            <Button Style="{StaticResource RowButton}" Click="Bookmarks_Click" Margin="0,0,0,1">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Right" Text="Ctrl+Shift+O" FontSize="11" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBlock Text="&#xE728;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" TextAlignment="Center" VerticalAlignment="Center" Margin="3,0,8,0"/>
+                                    <TextBlock Text="Закладки" VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </Button>
+                            <Button Style="{StaticResource RowButton}" Click="History_Click" Margin="0,0,0,1">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Right" Text="Ctrl+H" FontSize="11" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBlock Text="&#xE81C;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" TextAlignment="Center" VerticalAlignment="Center" Margin="3,0,8,0"/>
+                                    <TextBlock Text="История" VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </Button>
+                            <Button Style="{StaticResource RowButton}" Click="Downloads_Click" Margin="0,0,0,1">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Right" Text="Ctrl+J" FontSize="11" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBlock Text="&#xE896;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" TextAlignment="Center" VerticalAlignment="Center" Margin="3,0,8,0"/>
+                                    <TextBlock Text="Загрузки" VerticalAlignment="Center"/>
+                                </DockPanel>
+                            </Button>
+                            <Button Style="{StaticResource RowButton}" Click="Settings_Click" Margin="0,0,0,1">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE713;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="22" TextAlignment="Center" VerticalAlignment="Center" Margin="3,0,8,0"/>
+                                    <TextBlock Text="Настройки" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Button Grid.Row="5" Style="{StaticResource RowButton}" Click="Palette_Click" Margin="10,4,8,10">
+                        <DockPanel>
+                            <Border DockPanel.Dock="Right" CornerRadius="5" Background="{DynamicResource SurfaceBrush}"
+                                    BorderBrush="{DynamicResource PopupBorderBrush}" BorderThickness="1" Padding="6,1">
+                                <TextBlock Text="Ctrl+K" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                            </Border>
+                            <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="12" Width="22"
+                                       Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" Margin="2,0,4,0"/>
+                            <TextBlock Text="Поиск и команды" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+                        </DockPanel>
+                    </Button>
                 </Grid>
             </Border>
-
-            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,6,0">
-                <Button x:Name="ShieldBtn" Style="{StaticResource IconButton}" Padding="9,0" Click="Shield_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="ShieldIcon" Text="&#xEA18;" FontFamily="{StaticResource IconFont}" FontSize="14"
-                                   Foreground="{StaticResource GoodBrush}" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="ShieldCount" Text="0" Margin="6,0,0,1" FontFamily="{StaticResource UiFont}"
-                                   FontSize="12" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-                <Button Style="{StaticResource IconButton}" Content="&#xE734;" ToolTip="Добавить на стартовую (Ctrl+D)" Click="AddToStart_Click"/>
-                <Button x:Name="PanelBtn" Style="{StaticResource IconButton}" Content="&#xE90D;" ToolTip="Боковая панель (Ctrl+Shift+B)" Click="PanelToggle_Click"/>
-                <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="Поиск и команды (Ctrl+K)" Click="Palette_Click"/>
-            </StackPanel>
-
-            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Top">
-                <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" ToolTip="Свернуть" Click="Min_Click"/>
-                <Button x:Name="MaxBtn" Style="{StaticResource CaptionButton}" Content="&#xE922;" ToolTip="Развернуть" Click="Max_Click"/>
-                <Button Style="{StaticResource CaptionCloseButton}" Content="&#xE8BB;" ToolTip="Закрыть" Click="Close_Click"/>
-            </StackPanel>
         </Grid>
 
-        <!-- Боковая колонка: пространства и вкладки -->
-        <Grid x:Name="Sidebar" Grid.Row="1" Grid.Column="0" Margin="10,2,8,8">
+        <!-- ═══════════ Правая часть: вкладки, адресная строка, закладки, страница ═══════════ -->
+        <Grid x:Name="MainArea" Grid.Column="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <DockPanel Grid.Row="0" LastChildFill="True">
-                <Button DockPanel.Dock="Right" Style="{StaticResource WorkspaceButton}" ToolTip="Новое пространство"
-                        Click="AddWorkspace_Click" VerticalAlignment="Top" Margin="0,0,0,4">
-                    <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
-                </Button>
-                <ItemsControl x:Name="WorkspaceList">
+            <!-- Вкладки сверху -->
+            <Grid x:Name="TabRow" Grid.Row="0" Height="40">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="146"/>
+                </Grid.ColumnDefinitions>
+                <ItemsControl x:Name="TopTabs" Margin="6,0,8,0" Focusable="False" ClipToBounds="True"
+                              PreviewMouseLeftButtonDown="Strip_PreviewMouseLeftButtonDown" PreviewMouseMove="Strip_PreviewMouseMove"
+                              PreviewMouseLeftButtonUp="Strip_PreviewMouseLeftButtonUp" PreviewMouseDown="Strip_PreviewMouseDown"
+                              PreviewMouseRightButtonUp="Strip_PreviewMouseRightButtonUp" PreviewMouseWheel="TopTabs_MouseWheel">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <WrapPanel/>
+                            <local:TabStripPanel/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="{x:Type local:Workspace}">
-                            <Button Style="{StaticResource WorkspaceButton}" Click="Workspace_Click" ToolTip="{Binding Name}">
-                                <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="15"
-                                           Foreground="{Binding AccentBrush}"/>
-                                <Button.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="Переименовать" Click="WsRename_Click"/>
-                                        <MenuItem Header="Сменить значок и цвет" Click="WsLook_Click"/>
-                                        <Separator/>
-                                        <MenuItem Header="Удалить пространство" Click="WsDelete_Click"/>
-                                    </ContextMenu>
-                                </Button.ContextMenu>
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </DockPanel>
-
-            <DockPanel Grid.Row="1" Margin="4,8,4,6">
-                <TextBlock x:Name="WsCount" DockPanel.Dock="Right" Foreground="{StaticResource MutedBrush}" FontSize="12"/>
-                <TextBlock x:Name="WsTitle" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}"
-                           TextTrimming="CharacterEllipsis"/>
-            </DockPanel>
-
-            <Button Grid.Row="2" Style="{StaticResource RowButton}" Click="NewTab_Click" ToolTip="Новая вкладка (Ctrl+T)" Margin="0,0,0,4">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="&#xE710;" FontFamily="{StaticResource IconFont}" FontSize="12" Width="22"
-                               Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="2,0,4,0"/>
-                    <TextBlock Text="Новая вкладка" VerticalAlignment="Center"/>
-                </StackPanel>
-            </Button>
-
-            <ListBox x:Name="TabList" Grid.Row="3" Background="Transparent" BorderThickness="0" Padding="0"
-                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" FocusVisualStyle="{x:Null}"
-                     ItemContainerStyle="{StaticResource TabItemStyle}"
-                     SelectionChanged="TabList_SelectionChanged" PreviewMouseDown="TabList_PreviewMouseDown"
-                     PreviewMouseRightButtonUp="TabList_PreviewMouseRightButtonUp">
-                <ListBox.ItemTemplate>
-                    <DataTemplate DataType="{x:Type local:BrowserTab}">
-                        <Grid Height="34" ToolTip="{Binding Title}" Background="Transparent">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="30"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid Width="16" Height="16" HorizontalAlignment="Left" Margin="8,0,0,0">
-                                <TextBlock x:Name="FallbackIcon" Text="&#xE774;" FontFamily="{StaticResource IconFont}" FontSize="13"
-                                           Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <Image x:Name="FavImage" Source="{Binding Favicon}" Width="16" Height="16"
-                                       RenderOptions.BitmapScalingMode="HighQuality"/>
-                                <Path x:Name="Spinner" Visibility="Collapsed" Width="14" Height="14" Stroke="{StaticResource AccentBrush}"
-                                      StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                      Data="M 7,1 A 6,6 0 1 1 1,7" RenderTransformOrigin="0.5,0.5">
-                                    <Path.RenderTransform>
-                                        <RotateTransform/>
-                                    </Path.RenderTransform>
-                                </Path>
+                    <ItemsControl.Resources>
+                        <DataTemplate DataType="{x:Type local:BrowserTab}">
+                            <Grid x:Name="Root" Height="34" Margin="0,6,0,0" Background="Transparent" ToolTip="{Binding Tip}"
+                                  ToolTipService.InitialShowDelay="700" WindowChrome.IsHitTestVisibleInChrome="True">
+                                <Border x:Name="Bd" CornerRadius="9,9,0,0" Background="Transparent" Margin="1,0"/>
+                                <Border x:Name="Sep" Width="1" Height="16" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                        Background="{DynamicResource LineBrush}" Margin="0,0,0,2"/>
+                                <Border x:Name="GroupLine" Height="2.5" VerticalAlignment="Bottom" CornerRadius="1.2" Margin="6,0,6,1"
+                                        Background="{Binding Group.Brush}" Visibility="Collapsed"/>
+                                <Grid x:Name="Body" Margin="11,0,6,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter x:Name="Icon" Content="{Binding}" ContentTemplate="{StaticResource TabIcon}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="TitleText" Grid.Column="1" Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" Margin="9,0,4,0" FontSize="12.5" Foreground="{DynamicResource SoftTextBrush}"/>
+                                    <Button x:Name="AudioBtn" Grid.Column="2" Style="{StaticResource TinyIconButton}" Content="&#xE767;"
+                                            Visibility="Collapsed" ToolTip="Звук вкладки" Click="TabMute_Click"/>
+                                    <Button x:Name="CloseBtn" Grid.Column="3" Style="{StaticResource TinyIconButton}" Content="&#xE711;"
+                                            ToolTip="Закрыть (Ctrl+W)" Click="TabClose_Click"/>
+                                </Grid>
                             </Grid>
-                            <TextBlock Grid.Column="1" Text="{Binding Title}" TextTrimming="CharacterEllipsis"
-                                       VerticalAlignment="Center" Margin="2,0,4,0"/>
-                            <Button x:Name="AudioBtn" Grid.Column="2" Style="{StaticResource TinyIconButton}" Content="&#xE767;"
-                                    Visibility="Collapsed" ToolTip="Звук вкладки" Click="TabMute_Click"/>
-                            <Button x:Name="CloseBtn" Grid.Column="3" Style="{StaticResource TinyIconButton}" Content="&#xE711;"
-                                    Visibility="Hidden" ToolTip="Закрыть (Ctrl+W)" Click="TabClose_Click" Margin="0,0,4,0"/>
-                        </Grid>
-                        <DataTemplate.Triggers>
-                            <DataTrigger Binding="{Binding HasFavicon}" Value="True">
-                                <Setter TargetName="FallbackIcon" Property="Visibility" Value="Collapsed"/>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding IsPrivate}" Value="True">
-                                <Setter TargetName="FallbackIcon" Property="Text" Value="&#xED1A;"/>
-                                <Setter TargetName="FallbackIcon" Property="Foreground" Value="{StaticResource PrivateBrush}"/>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding ShowAudio}" Value="True">
-                                <Setter TargetName="AudioBtn" Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding IsMuted}" Value="True">
-                                <Setter TargetName="AudioBtn" Property="Content" Value="&#xE74F;"/>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
-                                <Setter TargetName="CloseBtn" Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
-                                <Setter TargetName="CloseBtn" Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                            <DataTrigger Binding="{Binding IsLoading}" Value="True">
-                                <Setter TargetName="Spinner" Property="Visibility" Value="Visible"/>
-                                <Setter TargetName="FavImage" Property="Visibility" Value="Collapsed"/>
-                                <Setter TargetName="FallbackIcon" Property="Visibility" Value="Collapsed"/>
-                                <DataTrigger.EnterActions>
-                                    <BeginStoryboard x:Name="SpinStoryboard">
-                                        <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="Spinner"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                                                             From="0" To="360" Duration="0:0:0.8" RepeatBehavior="Forever"/>
-                                        </Storyboard>
-                                    </BeginStoryboard>
-                                </DataTrigger.EnterActions>
-                                <DataTrigger.ExitActions>
-                                    <StopStoryboard BeginStoryboardName="SpinStoryboard"/>
-                                </DataTrigger.ExitActions>
-                            </DataTrigger>
-                        </DataTemplate.Triggers>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-
-            <StackPanel Grid.Row="4">
-                <!-- Новая версия браузера -->
-                <Border x:Name="UpdateCard" Visibility="Collapsed" Margin="0,6,0,0" Padding="12,10,12,12" CornerRadius="10"
-                        Background="#16273A" BorderBrush="#2F5578" BorderThickness="1">
-                    <StackPanel>
-                        <DockPanel>
-                            <TextBlock Text="&#xE896;" FontFamily="{StaticResource IconFont}" FontSize="14" Foreground="{StaticResource AccentBrush}"
-                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <TextBlock x:Name="UpdateHeading" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"
-                                       TextTrimming="CharacterEllipsis"/>
-                        </DockPanel>
-                        <TextBlock x:Name="UpdateNotes" Margin="0,6,0,0" FontSize="12" Foreground="{StaticResource SoftTextBrush}"
-                                   TextWrapping="Wrap" MaxHeight="64" TextTrimming="WordEllipsis" LineHeight="16"/>
-                        <Grid x:Name="UpdateProgress" Visibility="Collapsed" Margin="0,10,0,0">
-                            <Border x:Name="UpdateTrack" Height="4" CornerRadius="2" Background="#263A50" VerticalAlignment="Top"/>
-                            <Border x:Name="UpdateFill" Height="4" CornerRadius="2" Background="{StaticResource AccentBrush}"
-                                    HorizontalAlignment="Left" VerticalAlignment="Top" Width="0"/>
-                            <TextBlock x:Name="UpdateStatus" Margin="0,10,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}"
-                                       TextWrapping="Wrap"/>
-                        </Grid>
-                        <StackPanel x:Name="UpdateButtons" Orientation="Horizontal" Margin="0,10,0,0">
-                            <Button x:Name="UpdateNowBtn" Content="Обновить" Style="{StaticResource AccentButton}" Height="28" Padding="14,0"
-                                    Click="UpdateNow_Click"/>
-                            <Button x:Name="UpdateLaterBtn" Content="Позже" Style="{StaticResource TextButton}" Height="28" Padding="12,0"
-                                    Margin="6,0,0,0" Click="UpdateLater_Click"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
-                <Border x:Name="Toast" Visibility="Collapsed" Margin="0,6,0,0" Padding="12,9" CornerRadius="10"
-                        Background="#1D2B3B" BorderBrush="#2C4058" BorderThickness="1">
-                    <TextBlock x:Name="ToastText" TextWrapping="Wrap" Foreground="{StaticResource TextBrush}" FontSize="12.5"/>
-                </Border>
-            </StackPanel>
-
-            <Button Grid.Row="5" Style="{StaticResource RowButton}" Click="Palette_Click" Margin="0,6,0,0">
-                <DockPanel>
-                    <Border DockPanel.Dock="Right" CornerRadius="5" Background="#1C2633" BorderBrush="#2A3747" BorderThickness="1" Padding="6,1">
-                        <TextBlock Text="Ctrl+K" FontSize="11" Foreground="{StaticResource MutedBrush}"/>
-                    </Border>
-                    <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="12" Width="22"
-                               Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="2,0,4,0"/>
-                    <TextBlock Text="Поиск и команды" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
-                </DockPanel>
-            </Button>
-        </Grid>
-
-        <!-- Страница и боковая панель -->
-        <Grid x:Name="ContentGrid" Grid.Row="1" Grid.Column="1" Margin="0,0,8,8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" MinWidth="320"/>
-                <ColumnDefinition x:Name="SplitterCol" Width="0"/>
-                <ColumnDefinition x:Name="PanelCol" Width="0"/>
-            </Grid.ColumnDefinitions>
-
-            <Grid Grid.Column="0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="2"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <ProgressBar x:Name="LoadBar" IsIndeterminate="True" Height="2" Visibility="Hidden"
-                             Foreground="{StaticResource AccentBrush}" Background="Transparent" BorderThickness="0"/>
-                <Border x:Name="PageBorder" Grid.Row="1" Background="{StaticResource PageBgBrush}"
-                        BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
-                    <Grid x:Name="PageHost"/>
-                </Border>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding InGroup}" Value="True">
+                                    <Setter TargetName="GroupLine" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding ShowAudio}" Value="True">
+                                    <Setter TargetName="AudioBtn" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsMuted}" Value="True">
+                                    <Setter TargetName="AudioBtn" Property="Content" Value="&#xE74F;"/>
+                                </DataTrigger>
+                                <Trigger SourceName="Root" Property="local:TabStripPanel.Narrow" Value="True">
+                                    <Setter TargetName="CloseBtn" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="Body" Property="Margin" Value="9,0,4,2"/>
+                                </Trigger>
+                                <Trigger SourceName="Root" Property="local:TabStripPanel.Tiny" Value="True">
+                                    <Setter TargetName="TitleText" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="AudioBtn" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="Body" Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter TargetName="Body" Property="Margin" Value="0,0,0,2"/>
+                                </Trigger>
+                                <Trigger SourceName="Root" Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                </Trigger>
+                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ToolbarBrush}"/>
+                                    <Setter TargetName="Sep" Property="Visibility" Value="Hidden"/>
+                                    <Setter TargetName="TitleText" Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                                    <Setter TargetName="CloseBtn" Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                    <Setter TargetName="TitleText" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="CloseBtn" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="AudioBtn" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="Body" Property="HorizontalAlignment" Value="Center"/>
+                                    <Setter TargetName="Body" Property="Margin" Value="0,0,0,2"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type local:TabGroup}">
+                            <Border x:Name="Chip" Height="22" MinWidth="14" Margin="6,11,4,0" VerticalAlignment="Top" CornerRadius="7"
+                                    Background="{Binding Brush}" Padding="9,0" Cursor="Hand" WindowChrome.IsHitTestVisibleInChrome="True"
+                                    ToolTip="Группа: нажмите, чтобы свернуть или развернуть">
+                                <TextBlock x:Name="ChipText" Text="{Binding Label}" Foreground="{DynamicResource GroupTextBrush}" FontSize="12"
+                                           FontWeight="SemiBold" VerticalAlignment="Center" MaxWidth="150" TextTrimming="CharacterEllipsis"/>
+                            </Border>
+                            <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding Label}" Value="">
+                                    <Setter TargetName="Chip" Property="Padding" Value="0"/>
+                                    <Setter TargetName="Chip" Property="Width" Value="14"/>
+                                    <Setter TargetName="Chip" Property="Height" Value="14"/>
+                                    <Setter TargetName="Chip" Property="Margin" Value="8,15,6,0"/>
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type local:StripEnd}">
+                            <Button Style="{StaticResource IconButton}" Width="32" Height="30" Margin="2,8,0,0" VerticalAlignment="Top"
+                                    Content="&#xE710;" FontSize="12" ToolTip="Новая вкладка (Ctrl+T)" Click="NewTab_Click"/>
+                        </DataTemplate>
+                    </ItemsControl.Resources>
+                </ItemsControl>
             </Grid>
 
-            <GridSplitter x:Name="PanelSplitter" Grid.Column="1" Width="8" HorizontalAlignment="Stretch"
-                          Background="Transparent" Visibility="Collapsed" ResizeBehavior="PreviousAndNext"
-                          DragCompleted="PanelSplitter_DragCompleted"/>
+            <!-- Адресная строка и кнопки -->
+            <Border x:Name="Toolbar" Grid.Row="1" Height="46" Background="{DynamicResource ToolbarBrush}">
+                <Grid>
+                    <Grid x:Name="ToolbarGrid" Margin="6,0,6,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
-            <Grid x:Name="PanelRoot" Grid.Column="2" Visibility="Collapsed">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="38"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <DockPanel Margin="0,0,0,4">
-                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11"
-                            ToolTip="Скрыть панель (Ctrl+Shift+B)" Click="PanelClose_Click"/>
-                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE8A7;" FontSize="12"
-                            ToolTip="Открыть во вкладке" Click="PanelToTab_Click"/>
-                    <ItemsControl x:Name="PanelAppList">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+                            <Button x:Name="BackBtn" Style="{StaticResource IconButton}" Content="&#xE72B;" ToolTip="Назад (Alt+←)" Click="Back_Click"/>
+                            <Button x:Name="ForwardBtn" Style="{StaticResource IconButton}" Content="&#xE72A;" ToolTip="Вперёд (Alt+→)" Click="Forward_Click"/>
+                            <Button x:Name="ReloadBtn" Style="{StaticResource IconButton}" Content="&#xE72C;" ToolTip="Обновить (F5)" Click="Reload_Click"/>
+                        </StackPanel>
+
+                        <Border x:Name="AddressBorder" Grid.Column="1" Height="34" CornerRadius="17" VerticalAlignment="Center"
+                                Background="{DynamicResource SurfaceBrush}" BorderBrush="Transparent" BorderThickness="1"
+                                WindowChrome.IsHitTestVisibleInChrome="True" Cursor="IBeam">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="38"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="SecurityIcon" FontFamily="{StaticResource IconFont}" Text="&#xE721;" FontSize="12.5"
+                                           Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Background="Transparent" Cursor="Arrow" Margin="4,0,0,0"/>
+                                <TextBlock x:Name="AddressPlaceholder" Grid.Column="1" Text="Поиск или адрес сайта"
+                                           Foreground="{DynamicResource MutedBrush}" FontSize="13.5" IsHitTestVisible="False"
+                                           VerticalAlignment="Center" Margin="2,0,0,0"/>
+                                <TextBox x:Name="AddressBox" Grid.Column="1" Style="{StaticResource BareTextBox}" VerticalAlignment="Center"
+                                         PreviewKeyDown="AddressBox_PreviewKeyDown" TextChanged="AddressBox_TextChanged"
+                                         GotKeyboardFocus="AddressBox_GotKeyboardFocus" LostKeyboardFocus="AddressBox_LostKeyboardFocus"
+                                         PreviewMouseLeftButtonDown="AddressBox_PreviewMouseLeftButtonDown"/>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0" Cursor="Arrow">
+                                    <Button x:Name="ZoomChip" Visibility="Collapsed" Style="{StaticResource IconButton}" Height="26" MinWidth="0"
+                                            Padding="8,0" FontFamily="{StaticResource UiFont}" FontSize="12" Click="ZoomReset_Click"
+                                            ToolTip="Масштаб страницы. Нажмите, чтобы вернуть 100% (Ctrl+0)"/>
+                                    <Border x:Name="PrivateBadge" Visibility="Collapsed" Margin="0,0,4,0" Padding="8,2"
+                                            CornerRadius="9" Background="{DynamicResource PrivateBgBrush}" VerticalAlignment="Center">
+                                        <TextBlock Text="Приватная" Foreground="{DynamicResource PrivateBrush}" FontSize="11.5"/>
+                                    </Border>
+                                    <Button x:Name="StarBtn" Style="{StaticResource IconButton}" Width="30" Height="28" MinWidth="0" FontSize="14"
+                                            Content="&#xE734;" ToolTip="Добавить в закладки (Ctrl+D)" Click="Star_Click"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
+                            <Button x:Name="ShieldBtn" Style="{StaticResource IconButton}" Padding="9,0" Click="Shield_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="ShieldIcon" Text="&#xEA18;" FontFamily="{StaticResource IconFont}" FontSize="14"
+                                               Foreground="{DynamicResource GoodBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="ShieldCount" Text="0" Margin="6,0,0,1" FontFamily="{StaticResource UiFont}"
+                                               FontSize="12" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="DownloadsBtn" Style="{StaticResource IconButton}" Visibility="Collapsed" Click="DownloadsBtn_Click"
+                                    ToolTip="Загрузки (Ctrl+J)">
+                                <Grid Width="22" Height="22">
+                                    <Ellipse x:Name="DownloadRingBack" Stroke="{DynamicResource LineBrush}" StrokeThickness="2" Visibility="Collapsed"/>
+                                    <Path x:Name="DownloadRing" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2" StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="DownloadIcon" Text="&#xE896;" FontFamily="{StaticResource IconFont}" FontSize="13"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
+                            <Button x:Name="PanelBtn" Style="{StaticResource IconButton}" Content="&#xE90D;" ToolTip="Боковая панель: мессенджеры и почта (Ctrl+Shift+B)" Click="PanelToggle_Click"/>
+                            <Button x:Name="MenuBtn" Style="{StaticResource IconButton}" Content="&#xE700;" ToolTip="Меню" Click="Menu_Click"/>
+                        </StackPanel>
+                    </Grid>
+                    <ProgressBar x:Name="LoadBar" IsIndeterminate="True" Height="2" VerticalAlignment="Bottom" Visibility="Hidden"
+                                 Foreground="{DynamicResource AccentBrush}" Background="Transparent" BorderThickness="0"/>
+                </Grid>
+            </Border>
+
+            <!-- Панель закладок -->
+            <Border x:Name="BookmarksBarRow" Grid.Row="2" Height="32" Background="{DynamicResource ToolbarBrush}" Visibility="Collapsed">
+                <DockPanel Margin="8,0,8,3" LastChildFill="True">
+                    <Button x:Name="OtherBookmarksBtn" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Height="26" Padding="8,0"
+                            Click="OtherBookmarks_Click" Visibility="Collapsed" ToolTip="Другие закладки">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8B7;" FontFamily="{StaticResource IconFont}" FontSize="13" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource WarnBrush}"/>
+                            <TextBlock Text="Другие закладки" FontFamily="{StaticResource UiFont}" FontSize="12.5" Margin="7,0,0,1" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="BarMoreBtn" DockPanel.Dock="Right" Style="{StaticResource IconButton}" Height="26" MinWidth="28"
+                            Content="&#xE76C;&#xE76C;" FontSize="9" Visibility="Collapsed" Click="BarMore_Click" ToolTip="Ещё закладки"/>
+                    <StackPanel x:Name="BarEmptyHint" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed" Margin="6,0,0,0">
+                        <TextBlock Text="Добавляйте сюда сайты звёздочкой в адресной строке (Ctrl+D)" Foreground="{DynamicResource MutedBrush}" FontSize="12.5"
+                                   VerticalAlignment="Center"/>
+                        <Button x:Name="ImportYandexBtn" Style="{StaticResource LinkButton}" Margin="14,0,0,0" Padding="0" Click="ImportYandex_Click"
+                                Visibility="Collapsed">
+                            <TextBlock Text="Перенести закладки из Яндекс Браузера" FontSize="12.5"/>
+                        </Button>
+                    </StackPanel>
+                    <ItemsControl x:Name="BookmarkBarItems" Focusable="False">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal"/>
+                                <local:ClipRowPanel/>
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="{x:Type local:PanelApp}">
-                                <Button x:Name="AppBtn" Style="{StaticResource IconButton}" Padding="10,0" Margin="0,0,2,0"
-                                        Click="PanelApp_Click" ToolTip="{Binding Name}">
+                            <DataTemplate DataType="{x:Type local:BookmarkNode}">
+                                <Button x:Name="Btn" Style="{StaticResource IconButton}" Height="26" Padding="7,0" MaxWidth="190" Margin="0,0,2,0"
+                                        HorizontalContentAlignment="Left" Click="BookmarkBar_Click" PreviewMouseDown="BookmarkBar_MouseDown"
+                                        MouseRightButtonUp="BookmarkBar_RightClick" ToolTip="{Binding Tip}">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="13" VerticalAlignment="Center"/>
-                                        <TextBlock x:Name="AppName" Text="{Binding Name}" FontFamily="{StaticResource UiFont}" FontSize="12.5"
-                                                   Margin="7,0,0,1" VerticalAlignment="Center" Visibility="Collapsed"/>
+                                        <Grid Width="16" Height="16">
+                                            <TextBlock x:Name="Glyph" Text="&#xE774;" FontFamily="{StaticResource IconFont}" FontSize="12"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+                                            <Image x:Name="Fav" Source="{Binding Icon}" Width="16" Height="16" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        </Grid>
+                                        <TextBlock Text="{Binding Title}" FontFamily="{StaticResource UiFont}" FontSize="12.5" Margin="7,0,0,1"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="150"/>
                                     </StackPanel>
                                 </Button>
                                 <DataTemplate.Triggers>
-                                    <DataTrigger Binding="{Binding IsCurrent}" Value="True">
-                                        <Setter TargetName="AppBtn" Property="Background" Value="{StaticResource SelectedBrush}"/>
-                                        <Setter TargetName="AppBtn" Property="Foreground" Value="{StaticResource TextBrush}"/>
-                                        <Setter TargetName="AppName" Property="Visibility" Value="Visible"/>
+                                    <DataTrigger Binding="{Binding HasIcon}" Value="True">
+                                        <Setter TargetName="Glyph" Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsFolder}" Value="True">
+                                        <Setter TargetName="Glyph" Property="Text" Value="&#xE8B7;"/>
+                                        <Setter TargetName="Glyph" Property="FontSize" Value="13"/>
+                                        <Setter TargetName="Glyph" Property="Foreground" Value="{DynamicResource WarnBrush}"/>
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </DockPanel>
-                <Border Grid.Row="1" Background="{StaticResource PageBgBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
-                    <Grid x:Name="PanelHost"/>
+            </Border>
+
+            <!-- Поиск на странице (Ctrl+F) -->
+            <Border x:Name="FindBar" Grid.Row="3" Height="44" Visibility="Collapsed" Background="{DynamicResource ToolbarBrush}"
+                    BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0">
+                <DockPanel Margin="10,0,8,0">
+                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11" ToolTip="Закрыть (Esc)"
+                            Click="FindClose_Click" VerticalAlignment="Center"/>
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="340" Height="32" CornerRadius="10" Background="{DynamicResource SurfaceBrush}" BorderThickness="1"
+                                BorderBrush="{DynamicResource AccentBrush}">
+                            <Grid Margin="10,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="12" Foreground="{DynamicResource MutedBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock x:Name="FindHint" Grid.Column="1" Text="Найти на странице" Foreground="{DynamicResource MutedBrush}"
+                                           VerticalAlignment="Center" IsHitTestVisible="False"/>
+                                <TextBox x:Name="FindBox" Grid.Column="1" Style="{StaticResource BareTextBox}" VerticalAlignment="Center"
+                                         TextChanged="FindBox_TextChanged" PreviewKeyDown="FindBox_PreviewKeyDown"/>
+                                <TextBlock x:Name="FindCount" Grid.Column="2" Foreground="{DynamicResource MutedBrush}" FontSize="12"
+                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            </Grid>
+                        </Border>
+                        <Button Style="{StaticResource IconButton}" Content="&#xE70E;" FontSize="12" ToolTip="Предыдущее (Shift+Enter)" Margin="6,0,0,0"
+                                Click="FindPrev_Click"/>
+                        <Button Style="{StaticResource IconButton}" Content="&#xE70D;" FontSize="12" ToolTip="Следующее (Enter)" Click="FindNext_Click"/>
+                        <ToggleButton x:Name="FindCase" Margin="6,0,0,0" ToolTip="Учитывать регистр (Аа и аа — разное)" Checked="FindOption_Changed"
+                                      Unchecked="FindOption_Changed" Focusable="False" Cursor="Hand">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Bd" CornerRadius="8" Padding="9,0" Height="30" Background="Transparent">
+                                        <TextBlock Text="Аа" VerticalAlignment="Center" FontSize="12.5" Foreground="{DynamicResource SoftTextBrush}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                    </StackPanel>
+                    <Border/>
+                </DockPanel>
+            </Border>
+
+            <!-- Страница и боковая панель приложений -->
+            <Grid x:Name="ContentGrid" Grid.Row="4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="320"/>
+                    <ColumnDefinition x:Name="SplitterCol" Width="0"/>
+                    <ColumnDefinition x:Name="PanelCol" Width="0"/>
+                </Grid.ColumnDefinitions>
+
+                <Border x:Name="PageBorder" Grid.Column="0" Background="{DynamicResource PageBgBrush}"
+                        BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0">
+                    <Grid x:Name="PageHost"/>
                 </Border>
+
+                <GridSplitter x:Name="PanelSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
+                              Background="{DynamicResource LineBrush}" Visibility="Collapsed" ResizeBehavior="PreviousAndNext"
+                              DragCompleted="PanelSplitter_DragCompleted"/>
+
+                <Grid x:Name="PanelRoot" Grid.Column="2" Visibility="Collapsed" Background="{DynamicResource ToolbarBrush}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="38"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0">
+                        <DockPanel Margin="4,0,4,0">
+                            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" FontSize="11"
+                                    ToolTip="Скрыть панель (Ctrl+Shift+B)" Click="PanelClose_Click"/>
+                            <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE8A7;" FontSize="12"
+                                    ToolTip="Открыть во вкладке" Click="PanelToTab_Click"/>
+                            <ItemsControl x:Name="PanelAppList" Focusable="False">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type local:PanelApp}">
+                                        <Button x:Name="AppBtn" Style="{StaticResource IconButton}" Padding="10,0" Margin="0,0,2,0"
+                                                Click="PanelApp_Click" ToolTip="{Binding Name}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="13" VerticalAlignment="Center"/>
+                                                <TextBlock x:Name="AppName" Text="{Binding Name}" FontFamily="{StaticResource UiFont}" FontSize="12.5"
+                                                           Margin="7,0,0,1" VerticalAlignment="Center" Visibility="Collapsed"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                <Setter TargetName="AppBtn" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                                <Setter TargetName="AppBtn" Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                                                <Setter TargetName="AppName" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </DockPanel>
+                    </Border>
+                    <Border Grid.Row="1" Background="{DynamicResource PageBgBrush}">
+                        <Grid x:Name="PanelHost"/>
+                    </Border>
+                </Grid>
             </Grid>
+
+            <!-- Кнопки окна: в строке вкладок или в строке адреса -->
+            <StackPanel x:Name="CaptionButtons" Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" ToolTip="Свернуть" Click="Min_Click"/>
+                <Button x:Name="MaxBtn" Style="{StaticResource CaptionButton}" Content="&#xE922;" ToolTip="Развернуть" Click="Max_Click"/>
+                <Button Style="{StaticResource CaptionCloseButton}" Content="&#xE8BB;" ToolTip="Закрыть" Click="Close_Click"/>
+            </StackPanel>
         </Grid>
     </Grid>
 </Window>

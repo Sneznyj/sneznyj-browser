@@ -4,11 +4,11 @@
         xmlns:local="clr-namespace:SneznyjBrowser"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
         ShowInTaskbar="False" SizeToContent="Height" Width="680" WindowStartupLocation="Manual"
-        FontFamily="{StaticResource UiFont}" FontSize="13" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13" Foreground="{DynamicResource TextBrush}"
         UseLayoutRounding="True">
-    <Border Margin="20" CornerRadius="14" Background="{StaticResource PopupBrush}" BorderBrush="#2A3747" BorderThickness="1">
+    <Border Margin="20" CornerRadius="14" Background="{DynamicResource PopupBrush}" BorderBrush="{DynamicResource PopupBorderBrush}" BorderThickness="1">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="28" ShadowDepth="6" Opacity="0.55" Color="Black"/>
+            <DropShadowEffect BlurRadius="28" ShadowDepth="6" Opacity="0.4" Color="Black"/>
         </Border.Effect>
         <StackPanel>
             <Grid Margin="16,12,16,10">
@@ -16,13 +16,13 @@
                     <ColumnDefinition Width="28"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="15" Foreground="{StaticResource MutedBrush}"
+                <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="15" Foreground="{DynamicResource MutedBrush}"
                            VerticalAlignment="Center"/>
                 <TextBlock x:Name="Placeholder" Grid.Column="1" Text="Вкладки, история, стартовые, команды или поиск…"
-                           Foreground="{StaticResource MutedBrush}" FontSize="15" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                           Foreground="{DynamicResource MutedBrush}" FontSize="15" VerticalAlignment="Center" IsHitTestVisible="False"/>
                 <TextBox x:Name="Query" Grid.Column="1" Style="{StaticResource BareTextBox}" FontSize="15" VerticalAlignment="Center"/>
             </Grid>
-            <Border Height="1" Background="{StaticResource LineBrush}"/>
+            <Border Height="1" Background="{DynamicResource LineBrush}"/>
             <ListBox x:Name="Results" Background="Transparent" BorderThickness="0" MaxHeight="440" Margin="0,6"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" FocusVisualStyle="{x:Null}" Focusable="False"
                      ItemContainerStyle="{StaticResource PaletteItemStyle}">
@@ -36,20 +36,20 @@
                             </Grid.ColumnDefinitions>
                             <Grid Width="18" Height="18" HorizontalAlignment="Left">
                                 <TextBlock x:Name="GlyphText" Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="14"
-                                           Foreground="{StaticResource SoftTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                           Foreground="{DynamicResource SoftTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 <Image x:Name="IconImage" Source="{Binding Icon}" Width="16" Height="16" Visibility="Collapsed"
                                        RenderOptions.BitmapScalingMode="HighQuality"/>
                             </Grid>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,10,0">
                                 <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"/>
-                                <TextBlock x:Name="SubText" Text="{Binding Subtitle}" FontSize="11.5" Foreground="{StaticResource MutedBrush}"
+                                <TextBlock x:Name="SubText" Text="{Binding Subtitle}" FontSize="11.5" Foreground="{DynamicResource MutedBrush}"
                                            TextTrimming="CharacterEllipsis" Visibility="Collapsed"/>
                             </StackPanel>
                             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding Kind}" FontSize="11.5" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
-                                <Border x:Name="HintBox" Visibility="Collapsed" Margin="10,0,0,0" CornerRadius="5" Background="#1C2633"
-                                        BorderBrush="#2A3747" BorderThickness="1" Padding="6,1">
-                                    <TextBlock Text="{Binding Hint}" FontSize="11" Foreground="{StaticResource MutedBrush}"/>
+                                <TextBlock Text="{Binding Kind}" FontSize="11.5" Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center"/>
+                                <Border x:Name="HintBox" Visibility="Collapsed" Margin="10,0,0,0" CornerRadius="5" Background="{DynamicResource SurfaceBrush}"
+                                        BorderBrush="{DynamicResource PopupBorderBrush}" BorderThickness="1" Padding="6,1">
+                                    <TextBlock Text="{Binding Hint}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
                                 </Border>
                             </StackPanel>
                         </Grid>
@@ -68,8 +68,8 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
-            <Border Height="1" Background="{StaticResource LineBrush}"/>
-            <TextBlock Margin="16,8,16,10" FontSize="11.5" Foreground="{StaticResource MutedBrush}"
+            <Border Height="1" Background="{DynamicResource LineBrush}"/>
+            <TextBlock Margin="16,8,16,10" FontSize="11.5" Foreground="{DynamicResource MutedBrush}"
                        Text="↑ ↓ выбрать   ·   Enter открыть   ·   Esc закрыть   ·   можно печатать в любой раскладке"/>
         </StackPanel>
     </Border>

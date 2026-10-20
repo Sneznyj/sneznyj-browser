@@ -27,6 +27,9 @@ public static class AppPaths
     public static string SessionFile => Path.Combine(Root, "session.json");
     public static string SettingsFile => Path.Combine(Root, "settings.json");
     public static string HistoryFile => Path.Combine(Root, "history.json");
+    public static string BookmarksFile => Path.Combine(Root, "bookmarks.json");
+    public static string DownloadsFile => Path.Combine(Root, "downloads.json");
+    public static string ZoomFile => Path.Combine(Root, "zoom.json");
     public static string CustomBlocklist => Path.Combine(Root, "blocklist.txt");
     public static string UpdateStateFile => Path.Combine(Root, "update.json");
     public static string Updates => Path.Combine(Root, "updates");
@@ -46,6 +49,14 @@ public static class Json
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    /// <summary>Для сообщений страницам: компактно, имена в camelCase.</summary>
+    public static readonly JsonSerializerOptions Compact = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
 
     public static T Load<T>(string path) where T : new()
@@ -98,6 +109,40 @@ public sealed class SettingsData
     /// <summary>Свой адрес файла версии (для проверки обновлений на тестовом сервере).</summary>
     public string? UpdateUrl { get; set; }
 
+    // ── Внешний вид ──
+    /// <summary>system, snow, graphite, midnight, forest, ember, light, sand, mint, lavender</summary>
+    public string Theme { get; set; } = "snow";
+    /// <summary>Свой акцент (blue, purple…) или пусто — как у темы.</summary>
+    public string? Accent { get; set; }
+    /// <summary>top — вкладки сверху, left — списком в левой панели.</summary>
+    public string TabsPosition { get; set; } = "top";
+    /// <summary>pinned — всегда открыта, compact — узкая и раскрывается при наведении, hidden — выезжает от края.</summary>
+    public string LeftPanel { get; set; } = "compact";
+    public bool Animations { get; set; } = true;
+    public bool BookmarksBar { get; set; } = true;
+    /// <summary>Сайты в тёмной теме: auto — как тема браузера, light, dark.</summary>
+    public string SitesScheme { get; set; } = "auto";
+
+    // ── Стартовая ──
+    /// <summary>theme, aurora, sunset, ocean, mountains, space, plain, image</summary>
+    public string StartBackground { get; set; } = "theme";
+    public string? StartImage { get; set; }
+    public bool StartSnow { get; set; } = true;
+    public bool StartClock { get; set; } = true;
+    /// <summary>restore — открыть вкладки прошлого раза, start — начать со стартовой.</summary>
+    public string OnStartup { get; set; } = "restore";
+
+    // ── Поиск, вкладки, загрузки, жесты ──
+    /// <summary>Подсказки поисковика в адресной строке: отправляют набираемый текст поисковику, поэтому по умолчанию выключены.</summary>
+    public bool SearchSuggestions { get; set; }
+    public bool HttpsFirst { get; set; } = true;
+    public bool AskDownloadFolder { get; set; }
+    public string? DownloadFolder { get; set; }
+    public bool Gestures { get; set; } = true;
+    public bool GestureTrail { get; set; } = true;
+    /// <summary>Новые вкладки из ссылок открывать рядом с текущей.</summary>
+    public bool OpenNearCurrent { get; set; } = true;
+
     public void Normalize()
     {
         if (!UrlTools.Engines.ContainsKey(SearchEngine)) SearchEngine = "google";
@@ -109,6 +154,13 @@ public sealed class SettingsData
             "tagmanager.google.com", "tagassistant.google.com", "ads.google.com", "facebook.com",
         };
         if (PanelApps == null || PanelApps.Count == 0) PanelApps = Defaults.PanelApps(SearchEngine);
+        if (Theme != "system" && SneznyjBrowser.Themes.All.All(t => t.Id != Theme)) Theme = "snow";
+        if (Accent != null && SneznyjBrowser.Themes.Accents.All(a => a.Id != Accent)) Accent = null;
+        if (TabsPosition is not ("top" or "left")) TabsPosition = "top";
+        if (LeftPanel is not ("pinned" or "compact" or "hidden")) LeftPanel = "compact";
+        if (SitesScheme is not ("auto" or "light" or "dark")) SitesScheme = "auto";
+        if (OnStartup is not ("restore" or "start")) OnStartup = "restore";
+        if (string.IsNullOrWhiteSpace(StartBackground)) StartBackground = "theme";
     }
 
     public bool IsAllowed(string site)
@@ -134,6 +186,16 @@ public sealed class TabData
     public string Url { get; set; } = "";
     public string Title { get; set; } = "";
     public string? WorkspaceId { get; set; }
+    public bool Pinned { get; set; }
+    public string? Group { get; set; }
+}
+
+public sealed class TabGroupData
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Color { get; set; } = "blue";
+    public bool Collapsed { get; set; }
 }
 
 public sealed class WorkspaceData
@@ -145,6 +207,7 @@ public sealed class WorkspaceData
     public int ActiveTab { get; set; }
     public List<TabData>? Tabs { get; set; }
     public List<QuickLink>? Links { get; set; }
+    public List<TabGroupData>? Groups { get; set; }
 }
 
 public sealed class SessionData

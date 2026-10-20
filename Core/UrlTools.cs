@@ -31,7 +31,34 @@ public static class UrlTools
     public static bool IsStart(string? url) =>
         url != null && url.StartsWith("https://" + StartHost + "/", StringComparison.OrdinalIgnoreCase);
 
-    public static bool IsBlankOrStart(string? url) => string.IsNullOrEmpty(url) || IsStart(url);
+    /// <summary>Пустая вкладка или стартовая (не внутренние страницы вроде настроек).</summary>
+    public static bool IsNewTab(string? url) =>
+        string.IsNullOrEmpty(url) || (IsStart(url) && InternalPage(url) == null);
+
+    /// <summary>Внутренние страницы браузера: адрес sneznyj://settings → https://start.sneznyj/settings.html.</summary>
+    public static readonly Dictionary<string, (string Title, string Glyph)> Pages = new()
+    {
+        ["settings"] = ("Настройки", "\uE713"),
+        ["history"] = ("История", "\uE81C"),
+        ["downloads"] = ("Загрузки", "\uE896"),
+        ["bookmarks"] = ("Закладки", "\uE734"),
+    };
+
+    public static string PageUrl(string page, string? anchor = null) =>
+        $"https://{StartHost}/{page}.html" + (string.IsNullOrEmpty(anchor) ? "" : "#" + anchor);
+
+    /// <summary>Имя внутренней страницы по адресу (settings, history…) или null.</summary>
+    public static string? InternalPage(string? url)
+    {
+        if (!IsStart(url)) return null;
+        var path = url!.Substring(("https://" + StartHost + "/").Length);
+        int cut = path.IndexOfAny(new[] { '?', '#' });
+        if (cut >= 0) path = path[..cut];
+        if (path.EndsWith(".html")) path = path[..^5];
+        return Pages.ContainsKey(path) ? path : null;
+    }
+
+    public static string? InternalGlyph(string? url) => InternalPage(url) is { } p ? Pages[p].Glyph : null;
 
     public static bool IsWeb(string? url) =>
         url != null && !IsStart(url) &&
@@ -48,6 +75,15 @@ public static class UrlTools
     {
         var s = input.Trim();
         if (s.Length == 0) return "";
+        foreach (var prefix in new[] { "sneznyj://", "browser://", "chrome://", "edge://", "about:" })
+        {
+            if (!s.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+            var rest = s[prefix.Length..].Trim('/');
+            int hash = rest.IndexOf('#');
+            var name = (hash >= 0 ? rest[..hash] : rest).ToLowerInvariant();
+            if (name == "newtab") return "";
+            if (Pages.ContainsKey(name)) return PageUrl(name, hash >= 0 ? rest[(hash + 1)..] : null);
+        }
         if (Scheme.IsMatch(s)) return s;
         if (s.StartsWith("about:", StringComparison.OrdinalIgnoreCase)) return s;
         if (WinPath.IsMatch(s)) { try { return new Uri(s).AbsoluteUri; } catch { } }
@@ -61,7 +97,8 @@ public static class UrlTools
     {
         var s = input.Trim();
         return s.Length > 0 && !s.Contains(' ') &&
-               (Scheme.IsMatch(s) || Local.IsMatch(s) || Ip.IsMatch(s) || Domain.IsMatch(s) || WinPath.IsMatch(s));
+               (Scheme.IsMatch(s) || Local.IsMatch(s) || Ip.IsMatch(s) || Domain.IsMatch(s) || WinPath.IsMatch(s) ||
+                s.StartsWith("about:", StringComparison.OrdinalIgnoreCase));
     }
 
     public static string Host(string? url)
@@ -70,9 +107,19 @@ public static class UrlTools
         try { return new Uri(url).Host.ToLowerInvariant(); } catch { return ""; }
     }
 
+    public static bool IsLocalHost(string host) =>
+        host is "localhost" or "127.0.0.1" or "[::1]" || host.EndsWith(".localhost") || host.EndsWith(".test") ||
+        host.EndsWith(".local") || System.Net.IPAddress.TryParse(host.Trim('[', ']'), out _) || !host.Contains('.');
+
     public static string SiteKey(string host) => host.StartsWith("www.") ? host[4..] : host;
 
-    public static string Display(string? url) => IsStart(url) ? "" : url ?? "";
+    public static string Display(string? url)
+    {
+        if (!IsStart(url)) return url ?? "";
+        if (InternalPage(url) is not { } page) return "";
+        int hash = url!.IndexOf('#');
+        return "sneznyj://" + page + (hash >= 0 ? url[hash..] : "");
+    }
 }
 
 /// <summary>Поиск по словам и с учётом неправильной раскладки (vtnhbrf → метрика).</summary>

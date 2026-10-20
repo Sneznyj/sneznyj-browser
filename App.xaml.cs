@@ -9,6 +9,9 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // Для проверок: окно рисуется без видеокарты, тогда снимок PrintWindow видно, даже если окно перекрыто.
+        if (Environment.GetEnvironmentVariable("SNEZNYJ_BROWSER_SOFTWARE") == "1")
+            System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
 
         // Одна копия браузера: повторный запуск передаёт ссылки уже открытому окну.
         var mutex = new Mutex(true, "SneznyjBrowser.Single." + AppPaths.InstanceKey, out bool created);
@@ -24,6 +27,10 @@ public partial class App : Application
         // --no-activate: окно появляется, но не забирает фокус (для скриптов и обновления в фоне).
         bool activate = !e.Args.Contains("--no-activate");
         AppPaths.Ensure();
+        // Тема нужна ещё до первого окна: все цвета интерфейса берутся из неё.
+        var settings = Json.Load<SettingsData>(AppPaths.SettingsFile);
+        settings.Normalize();
+        Themes.Apply(settings);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         WelcomeWindow.RunIfFirstStart(activate);
 

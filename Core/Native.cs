@@ -22,6 +22,30 @@ static class Native
     [DllImport("user32.dll")]
     static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
 
+    [DllImport("user32.dll")]
+    static extern bool GetCursorPos(out POINT p);
+
+    [DllImport("user32.dll")]
+    static extern IntPtr WindowFromPoint(POINT p);
+
+    [DllImport("user32.dll")]
+    static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+    [DllImport("user32.dll")]
+    static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
+
+    [DllImport("shell32.dll")]
+    static extern int SHGetKnownFolderPath([MarshalAs(UnmanagedType.LPStruct)] Guid id, uint flags, IntPtr token, out IntPtr path);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT { public int X, Y; }
+
     [StructLayout(LayoutKind.Sequential)]
     struct RECT { public int Left, Top, Right, Bottom; }
 
@@ -32,24 +56,66 @@ static class Native
     const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     const int DWMWA_BORDER_COLOR = 34;
     const int DWMWA_CAPTION_COLOR = 35;
+    const int GWL_EXSTYLE = -20;
+    const long WS_EX_NOACTIVATE = 0x08000000, WS_EX_TOOLWINDOW = 0x80, WS_EX_TRANSPARENT = 0x20, WS_EX_LAYERED = 0x80000;
 
-    static int ColorRef(byte r, byte g, byte b) => r | (g << 8) | (b << 16);
+    static int ColorRef(Color c) => c.R | (c.G << 8) | (c.B << 16);
 
+    /// <summary>Тёмная или светлая рамка окна Windows и скругление — под текущую тему.</summary>
     public static void StyleWindow(Window w, bool rounded = true)
     {
         var h = new WindowInteropHelper(w).Handle;
         if (h == IntPtr.Zero) return;
-        int dark = 1;
+        var p = Themes.Current;
+        int dark = p.IsDark ? 1 : 0;
         DwmSetWindowAttribute(h, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, 4);
         int corners = rounded ? 2 : 1;
         DwmSetWindowAttribute(h, DWMWA_WINDOW_CORNER_PREFERENCE, ref corners, 4);
-        int border = ColorRef(0x26, 0x32, 0x41);
+        int border = ColorRef(Themes.ToColor(p.Line));
         DwmSetWindowAttribute(h, DWMWA_BORDER_COLOR, ref border, 4);
-        int caption = ColorRef(0x0E, 0x13, 0x19);
+        int caption = ColorRef(Themes.ToColor(p.Bg));
         DwmSetWindowAttribute(h, DWMWA_CAPTION_COLOR, ref caption, 4);
     }
 
+    /// <summary>Окно-подсказка: не забирает фокус при клике, не видно в Alt+Tab; с clickThrough — пропускает мышь насквозь.</summary>
+    public static void MakeOverlay(Window w, bool clickThrough = false)
+    {
+        var h = new WindowInteropHelper(w).Handle;
+        if (h == IntPtr.Zero) return;
+        long ex = GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64() | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+        if (clickThrough) ex |= WS_EX_TRANSPARENT | WS_EX_LAYERED;
+        SetWindowLongPtr(h, GWL_EXSTYLE, new IntPtr(ex));
+    }
+
     public static bool IsKeyDown(int virtualKey) => (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+
+    public static bool AnyMouseButtonDown() => IsKeyDown(0x01) || IsKeyDown(0x02) || IsKeyDown(0x04);
+
+    /// <summary>Курсор в пикселях экрана.</summary>
+    public static Point CursorPx()
+    {
+        GetCursorPos(out var p);
+        return new Point(p.X, p.Y);
+    }
+
+    /// <summary>Верхнее окно под курсором (главное окно программы, которой принадлежит точка).</summary>
+    public static IntPtr RootWindowUnderCursor()
+    {
+        GetCursorPos(out var p);
+        var hwnd = WindowFromPoint(p);
+        return hwnd == IntPtr.Zero ? IntPtr.Zero : GetAncestor(hwnd, 2 /* GA_ROOT */);
+    }
+
+    public static IntPtr Foreground() => GetForegroundWindow();
+
+    public static IntPtr Handle(Window w) => new WindowInteropHelper(w).Handle;
+
+    public static string? KnownFolder(Guid id)
+    {
+        if (SHGetKnownFolderPath(id, 0, IntPtr.Zero, out var ptr) != 0) return null;
+        try { return Marshal.PtrToStringUni(ptr); }
+        finally { Marshal.FreeCoTaskMem(ptr); }
+    }
 
     /// <summary>Сколько окно «вылезает» за экран в развёрнутом виде (рамка + отступ), в единицах WPF.</summary>
     public static Thickness MaximizedOverhang(Window w)
@@ -70,6 +136,22 @@ static class Native
         var tl = m.Transform(new Point(info.rcMonitor.Left, info.rcMonitor.Top));
         var br = m.Transform(new Point(info.rcMonitor.Right, info.rcMonitor.Bottom));
         return new Rect(tl, br);
+    }
+
+    /// <summary>Прямоугольник элемента в пикселях экрана.</summary>
+    public static Rect ScreenRectPx(FrameworkElement e)
+    {
+        if (PresentationSource.FromVisual(e) == null) return Rect.Empty;
+        var tl = e.PointToScreen(new Point(0, 0));
+        var br = e.PointToScreen(new Point(e.ActualWidth, e.ActualHeight));
+        return new Rect(tl, br);
+    }
+
+    /// <summary>Пиксели экрана → единицы WPF (для Left/Top окон).</summary>
+    public static Point PxToDip(Visual v, Point px)
+    {
+        var m = PresentationSource.FromVisual(v)?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        return m.Transform(px);
     }
 }
 

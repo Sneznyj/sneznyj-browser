@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Загрузки</title>
+<link id="theme" rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="ui.css">
+<style>
+  .dl { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 12px }
+  .dl:hover { background: var(--hover) }
+  .ext { width: 40px; height: 46px; flex: none; position: relative; color: var(--muted) }
+  .ext svg { width: 40px; height: 46px }
+  .ext b { position: absolute; left: 0; right: 0; bottom: 9px; text-align: center; font-size: 9px; font-weight: 800; color: var(--accent); letter-spacing: .03em }
+  .dl .info { flex: 1; min-width: 0 }
+  .dl .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer }
+  .dl .name.gone { text-decoration: line-through; color: var(--muted); cursor: default; font-weight: 400 }
+  .dl .url { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+  .dl .st { font-size: 12.5px; color: var(--soft); margin-top: 3px }
+  .bar { height: 4px; border-radius: 2px; background: var(--line); margin-top: 7px; overflow: hidden }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width .4s }
+  .dl .btns { display: flex; gap: 6px; flex: none }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="side" id="side"></aside>
+  <main>
+    <div class="head">
+      <h2>Загрузки</h2>
+      <div class="search"><span id="sIcon"></span><input type="search" id="q" placeholder="Искать среди загрузок"></div>
+      <button class="btn" id="folder"></button>
+      <button class="btn" id="clear">Очистить список</button>
+    </div>
+    <div class="sub" id="where"></div>
+    <div id="list"></div>
+  </main>
+</div>
+<script src="ui.js"></script>
+<script>
+(() => {
+  $('#side').append(el('h1', null, icon('snow'), 'Снежный'), ...sideNav('downloads'));
+  $('#sIcon').replaceWith(icon('search'));
+  $('#folder').append(icon('folder'), 'Открыть папку');
+  let items = [];
+  const act = (id, action) => Bridge.post({ cmd: 'download', id, action });
+
+  function render() {
+    const q = $('#q').value.trim().toLowerCase();
+    const list = $('#list'); list.textContent = '';
+    const shown = items.filter(d => !q || (d.name + ' ' + d.url).toLowerCase().includes(q));
+    if (!shown.length) { list.append(el('div', { class: 'empty' }, icon('down'), q ? 'Ничего не нашлось' : 'Загрузок пока нет')); return; }
+    let lastDay = '', box = null;
+    for (const d of shown) {
+      const date = new Date(d.started);
+      if (date.toDateString() !== lastDay) {
+        lastDay = date.toDateString();
+        list.append(el('div', { class: 'day', text: dayTitle(date) }));
+        box = el('div', { class: 'list' });
+        list.append(box);
+      }
+      const ext = (d.name.split('.').pop() || '').slice(0, 4).toUpperCase();
+      const active = d.state === 'progress' || d.state === 'paused';
+      const done = d.state === 'done' && d.exists;
+      const btns = el('div', { class: 'btns' });
+      if (active) {
+        btns.append(el('button', { class: 'btn small', text: d.state === 'paused' ? 'Продолжить' : 'Пауза', onclick: () => act(d.id, d.state === 'paused' ? 'resume' : 'pause') }));
+        btns.append(el('button', { class: 'btn small danger', text: 'Отменить', onclick: () => act(d.id, 'cancel') }));
+      } else if (done) {
+        btns.append(el('button', { class: 'btn small', text: 'Открыть', onclick: () => act(d.id, 'open') }));
+        btns.append(el('button', { class: 'btn small', text: 'Показать в папке', onclick: () => act(d.id, 'show') }));
+      } else if (d.state !== 'done') {
+        btns.append(el('button', { class: 'btn small', text: 'Скачать снова', onclick: () => act(d.id, 'retry') }));
+      }
+      if (!active) btns.append(el('button', { class: 'icon-btn', title: 'Убрать из списка', html: ICONS.x, onclick: () => act(d.id, 'remove') }));
+      box.append(el('div', { class: 'dl' },
+        el('div', { class: 'ext', html: ICONS.file }, el('b', { text: ext })),
+        el('div', { class: 'info' },
+          el('div', { class: 'name' + (d.state === 'done' && !d.exists ? ' gone' : ''), text: d.name, title: d.path, onclick: () => done && act(d.id, 'open') }),
+          el('div', { class: 'url', text: d.url, title: d.url }),
+          el('div', { class: 'st', text: d.status }),
+          active ? el('div', { class: 'bar' }, el('i', { style: { width: Math.round(d.progress * 100) + '%' } })) : null),
+        btns));
+    }
+  }
+  $('#q').addEventListener('input', render);
+  $('#folder').onclick = () => Bridge.post({ cmd: 'openDownloadsFolder' });
+  $('#clear').onclick = () => Bridge.post({ cmd: 'downloadsClear' });
+  Bridge.on('downloads', m => { items = m.items; $('#where').textContent = 'Файлы сохраняются в ' + m.folder + '. Папку можно поменять в настройках.'; render(); });
+  Bridge.post({ cmd: 'init', page: 'downloads' });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+/* Общий вид внутренних страниц Снежного браузера. Цвета — из theme.css (его пишет браузер под выбранную тему). */
+* { box-sizing: border-box }
+html, body { margin: 0; min-height: 100% }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none }
+a:hover { text-decoration: underline }
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent) }
+::-webkit-scrollbar { width: 10px; height: 10px }
+::-webkit-scrollbar-thumb { background: var(--thumb); border-radius: 6px; border: 2px solid var(--bg) }
+::-webkit-scrollbar-track { background: transparent }
+
+.layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 100vh }
+.side { position: sticky; top: 0; height: 100vh; padding: 26px 14px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px }
+.side h1 { font-size: 20px; font-weight: 650; margin: 0 10px 18px; display: flex; align-items: center; gap: 10px }
+.side h1 svg { color: var(--accent); width: 24px; height: 24px; flex: none }
+.nav { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 10px; color: var(--soft); cursor: pointer; user-select: none; text-decoration: none !important }
+.nav:hover { background: var(--hover); color: var(--text) }
+.nav.on { background: var(--selected); color: var(--text); font-weight: 600 }
+.nav svg { width: 18px; height: 18px; flex: none; opacity: .9 }
+.side .grow { flex: 1 }
+.side .foot { color: var(--muted); font-size: 12px; padding: 10px 12px 0 }
+
+main { padding: 30px 40px 80px; max-width: 980px; width: 100% }
+main.wide { max-width: 1200px }
+.head { display: flex; align-items: center; gap: 14px; margin: 0 0 22px; flex-wrap: wrap }
+.head h2 { font-size: 24px; font-weight: 650; margin: 0; flex: 1 }
+section { scroll-margin-top: 20px; margin-bottom: 34px }
+section > h3 { font-size: 17px; font-weight: 650; margin: 0 0 12px; display: flex; align-items: center; gap: 10px }
+.card { background: var(--toolbar); border: 1px solid var(--line); border-radius: 16px; padding: 6px 20px }
+.card + .card { margin-top: 12px }
+.card.pad { padding: 18px 20px }
+.row { display: flex; align-items: center; gap: 18px; padding: 14px 0; min-height: 58px }
+.row + .row { border-top: 1px solid var(--line) }
+.row .t { flex: 1; min-width: 0 }
+.row .t b { display: block; font-weight: 600 }
+.row .t small, .muted { color: var(--muted); font-size: 12.5px }
+.row .t small { display: block; margin-top: 2px }
+.sub { color: var(--muted); font-size: 13px; margin: -4px 0 12px }
+
+/* Переключатель */
+.switch { position: relative; width: 44px; height: 24px; flex: none; cursor: pointer }
+.switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer }
+.switch span { position: absolute; inset: 0; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); transition: background .15s, border-color .15s }
+.switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s }
+.switch input:checked + span { background: var(--accent); border-color: var(--accent) }
+.switch input:checked + span::after { transform: translateX(20px); background: var(--accent-text) }
+.switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px }
+
+/* Сегменты */
+.seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 11px; padding: 3px; gap: 2px; flex-wrap: wrap }
+.seg button { border: 0; background: transparent; color: var(--soft); font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 8px; cursor: pointer }
+.seg button:hover { color: var(--text); background: var(--hover) }
+.seg button.on { background: var(--accent); color: var(--accent-text); font-weight: 600 }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-size: 13.5px; padding: 8px 16px; border-radius: 10px; cursor: pointer; white-space: nowrap; text-decoration: none !important }
+.btn:hover { background: var(--hover) }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600 }
+.btn.primary:hover { filter: brightness(1.06) }
+.btn.danger { color: var(--danger) }
+.btn.small { padding: 5px 11px; font-size: 12.5px; border-radius: 8px }
+.btn svg { width: 16px; height: 16px }
+.btn:disabled { opacity: .45; cursor: default }
+.icon-btn { border: 0; background: transparent; color: var(--muted); width: 32px; height: 32px; border-radius: 8px; display: inline-grid; place-items: center; cursor: pointer; flex: none }
+.icon-btn:hover { background: var(--hover); color: var(--text) }
+.icon-btn svg { width: 16px; height: 16px }
+
+input[type=text], input[type=search], input[type=url], select {
+  background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+  font: inherit; font-size: 14px; padding: 8px 12px; outline: none; transition: border-color .15s, box-shadow .15s; min-width: 0
+}
+input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent) }
+input::placeholder { color: var(--muted) }
+.search { position: relative; flex: 0 1 360px }
+.search input { width: 100%; padding-left: 38px; border-radius: 12px; height: 40px }
+.search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--muted) }
+label.check { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 6px 0; user-select: none }
+label.check input { width: 17px; height: 17px; accent-color: var(--accent); margin: 0 }
+
+/* Списки: история, загрузки, закладки */
+.list { background: var(--toolbar); border: 1px solid var(--line); border-radius: 16px; padding: 6px; }
+.day { font-size: 13px; font-weight: 650; color: var(--soft); margin: 22px 4px 8px }
+.day:first-child { margin-top: 0 }
+.item { display: flex; align-items: center; gap: 12px; padding: 7px 10px; border-radius: 10px; min-height: 44px; cursor: pointer; position: relative }
+.item:hover { background: var(--hover) }
+.item .time { color: var(--muted); font-size: 12.5px; width: 44px; flex: none; font-variant-numeric: tabular-nums }
+.fav { width: 18px; height: 18px; flex: none; border-radius: 4px; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: var(--accent-text); overflow: hidden }
+.fav img { width: 18px; height: 18px }
+.item .main { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px }
+.item .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0 }
+.item .host { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; max-width: 40% }
+.item .acts { display: flex; gap: 2px; opacity: 0; transition: opacity .12s }
+.item:hover .acts, .item:focus-within .acts { opacity: 1 }
+.empty { text-align: center; color: var(--muted); padding: 60px 20px }
+.empty svg { width: 46px; height: 46px; opacity: .45; display: block; margin: 0 auto 12px }
+
+/* Окна поверх страницы */
+.modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.42); display: grid; place-items: center; z-index: 50; animation: fade .12s }
+.modal { background: var(--popup); border: 1px solid var(--popup-border); border-radius: 16px; padding: 22px; width: min(440px, calc(100vw - 32px)); box-shadow: 0 18px 50px rgba(0,0,0,.35) }
+.modal h4 { margin: 0 0 8px; font-size: 17px }
+.modal p { margin: 0 0 6px; color: var(--soft) }
+.modal .field { display: block; margin-top: 12px }
+.modal .field span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px }
+.modal .field input, .modal .field select { width: 100% }
+.modal .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px }
+.toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); background: var(--popup); border: 1px solid var(--popup-border); color: var(--text); padding: 10px 18px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.3); z-index: 60; animation: fade .15s }
+@keyframes fade { from { opacity: 0 } }
+
+kbd { font: 12px "Segoe UI", sans-serif; padding: 2px 7px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); color: var(--soft); white-space: nowrap }
+
+@media (max-width: 760px) {
+  .layout { grid-template-columns: 1fr }
+  .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; padding: 12px; border-right: 0; border-bottom: 1px solid var(--line) }
+  .side h1 { width: 100%; margin-bottom: 8px }
+  .side .grow, .side .foot { display: none }
+  main { padding: 20px 16px 60px }
+}

@@ -27,11 +27,34 @@ public sealed class BrowserTab : Observable
     string _title = "Новая вкладка";
     string _url = "";
     ImageSource? _favicon;
-    bool _isLoading, _isAudible, _isMuted;
+    bool _isLoading, _isAudible, _isMuted, _isActive, _isPinned;
     int _blocked;
+    TabGroup? _group;
 
-    public string Title { get => _title; set => Set(ref _title, value); }
-    public string Url { get => _url; set => Set(ref _url, value); }
+    public string Title { get => _title; set { if (Set(ref _title, value)) Raise(nameof(Tip)); } }
+
+    public string Url
+    {
+        get => _url;
+        set { if (Set(ref _url, value)) { Raise(nameof(FallbackGlyph)); Raise(nameof(Tip)); } }
+    }
+
+    /// <summary>Подсказка при наведении на вкладку: название и адрес.</summary>
+    public string Tip => UrlTools.IsNewTab(_url) ? _title : $"{_title}\n{UrlTools.Display(_url)}";
+
+    /// <summary>Значок, пока у сайта нет своего: шестерёнка для настроек, часы для истории и т. п.</summary>
+    public string FallbackGlyph => IsPrivate ? "\uED1A" : UrlTools.InternalGlyph(_url) ?? "\uE774";
+
+    public bool IsActive { get => _isActive; set => Set(ref _isActive, value); }
+    public bool IsPinned { get => _isPinned; set => Set(ref _isPinned, value); }
+
+    public TabGroup? Group
+    {
+        get => _group;
+        set { if (Set(ref _group, value)) Raise(nameof(InGroup)); }
+    }
+
+    public bool InGroup => _group != null;
 
     public ImageSource? Favicon
     {
@@ -60,7 +83,49 @@ public sealed class BrowserTab : Observable
     public Workspace Workspace { get; set; } = null!;
     public WebView2? View { get; set; }
     public string? PendingUrl { get; set; }
+    /// <summary>Адрес http://, который сейчас пробуем открыть по https.</summary>
+    public string? HttpsUpgradeFrom { get; set; }
     public DateTime HiddenSince { get; set; } = DateTime.Now;
+}
+
+/// <summary>Группа вкладок: название, цвет, свёрнута или нет.</summary>
+public sealed class TabGroup : Observable
+{
+    string _name = "", _color = "blue";
+    bool _collapsed;
+    int _count;
+
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+    public string Name { get => _name; set { if (Set(ref _name, value)) Raise(nameof(Label)); } }
+
+    public string Color
+    {
+        get => _color;
+        set { if (Set(ref _color, value)) Raise(nameof(Brush)); }
+    }
+
+    public bool Collapsed { get => _collapsed; set { if (Set(ref _collapsed, value)) Raise(nameof(Label)); } }
+    public int Count { get => _count; set { if (Set(ref _count, value)) Raise(nameof(Label)); } }
+    public Brush Brush => Themes.GroupBrush(_color);
+
+    /// <summary>Подпись на «ярлычке» группы: название, у свёрнутой ещё и число вкладок.</summary>
+    public string Label => _collapsed ? (_name.Length > 0 ? $"{_name} · {_count}" : $"{_count}") : _name;
+
+    public void RefreshBrush() => Raise(nameof(Brush));
+
+    public static TabGroup FromData(TabGroupData d) => new()
+    {
+        Id = string.IsNullOrEmpty(d.Id) ? Guid.NewGuid().ToString("N")[..8] : d.Id,
+        Name = d.Name ?? "", Color = d.Color ?? "blue", Collapsed = d.Collapsed,
+    };
+
+    public TabGroupData ToData() => new() { Id = Id, Name = Name, Color = Color, Collapsed = Collapsed };
+}
+
+/// <summary>Последний элемент полосы вкладок — кнопка «+».</summary>
+public sealed class StripEnd
+{
+    public static readonly StripEnd Instance = new();
 }
 
 public sealed class QuickLink
@@ -86,19 +151,68 @@ public sealed class Workspace : Observable
         set { if (Set(ref _accent, value)) Raise(nameof(AccentBrush)); }
     }
 
+    /// <summary>Цвет значка пространства: пастельный на тёмной теме, насыщеннее на светлой — чтобы было видно.</summary>
     public Brush AccentBrush
     {
         get
         {
-            try { return new SolidColorBrush((System.Windows.Media.Color)ColorConverter.ConvertFromString(_accent)); }
+            try
+            {
+                var c = (System.Windows.Media.Color)ColorConverter.ConvertFromString(_accent);
+                if (!Themes.Current.IsDark) c = System.Windows.Media.Color.FromRgb((byte)(c.R * 0.62), (byte)(c.G * 0.62), (byte)(c.B * 0.62));
+                var b = new SolidColorBrush(c);
+                b.Freeze();
+                return b;
+            }
             catch { return Brushes.LightSkyBlue; }
         }
     }
 
+    public void RefreshBrush() => Raise(nameof(AccentBrush));
+
     public bool IsCurrent { get => _isCurrent; set => Set(ref _isCurrent, value); }
     public ObservableCollection<BrowserTab> Tabs { get; } = new();
+    /// <summary>То, что видно в полосе вкладок: ярлычки групп и вкладки (без вкладок свёрнутых групп), в конце «+».</summary>
+    public ObservableCollection<object> Strip { get; } = new();
+    public List<TabGroup> Groups { get; } = new();
     public List<QuickLink> Links { get; set; } = new();
     public BrowserTab? ActiveTab { get; set; }
+
+    int _count;
+    public int Count { get => _count; set { if (Set(ref _count, value)) Raise(nameof(CountText)); } }
+    public string CountText => _count == 0 ? "" : _count.ToString();
+
+    /// <summary>Пересобирает Strip по Tabs, не пересоздавая элементы: вкладки не мигают и не теряют наведение.</summary>
+    public void RefreshStrip()
+    {
+        var target = new List<object>(Tabs.Count + Groups.Count + 1);
+        TabGroup? cur = null;
+        foreach (var g in Groups) g.Count = 0;
+        foreach (var t in Tabs)
+        {
+            if (t.Group != null) t.Group.Count++;
+            if (t.Group != cur)
+            {
+                cur = t.Group;
+                if (cur != null) target.Add(cur);
+            }
+            if (cur == null || !cur.Collapsed) target.Add(t);
+        }
+        target.Add(StripEnd.Instance);
+        Groups.RemoveAll(g => g.Count == 0);
+        Count = Tabs.Count;
+
+        for (int i = 0; i < target.Count; i++)
+        {
+            if (i < Strip.Count && ReferenceEquals(Strip[i], target[i])) continue;
+            int found = -1;
+            for (int j = i + 1; j < Strip.Count; j++)
+                if (ReferenceEquals(Strip[j], target[i])) { found = j; break; }
+            if (found >= 0) Strip.Move(found, i);
+            else Strip.Insert(i, target[i]);
+        }
+        while (Strip.Count > target.Count) Strip.RemoveAt(Strip.Count - 1);
+    }
 
     public static Workspace FromData(WorkspaceData d)
     {
@@ -110,18 +224,35 @@ public sealed class Workspace : Observable
             Accent = string.IsNullOrEmpty(d.Accent) ? "#7CC4FF" : d.Accent,
             Links = d.Links ?? new(),
         };
+        foreach (var g in d.Groups ?? new()) ws.Groups.Add(TabGroup.FromData(g));
+        var loaded = new List<BrowserTab>();
         foreach (var t in d.Tabs ?? new())
         {
             var url = t.Url ?? "";
-            ws.Tabs.Add(new BrowserTab
+            loaded.Add(new BrowserTab
             {
                 Workspace = ws,
                 Url = url,
                 Title = string.IsNullOrWhiteSpace(t.Title) ? "Новая вкладка" : t.Title,
-                Favicon = url.Length == 0 ? null : Favicons.Load(UrlTools.Host(url)),
+                Favicon = UrlTools.IsWeb(url) ? Favicons.Load(UrlTools.Host(url)) : null,
+                IsPinned = t.Pinned,
+                Group = t.Pinned ? null : ws.Groups.FirstOrDefault(g => g.Id == t.Group),
             });
         }
-        if (d.ActiveTab >= 0 && d.ActiveTab < ws.Tabs.Count) ws.ActiveTab = ws.Tabs[d.ActiveTab];
+        // Закреплённые всегда в начале, вкладки одной группы — рядом.
+        var ordered = loaded.Where(t => t.IsPinned).Concat(loaded.Where(t => !t.IsPinned)).ToList();
+        var added = new HashSet<BrowserTab>();
+        foreach (var t in ordered)
+        {
+            if (added.Contains(t)) continue;
+            foreach (var x in t.Group == null ? new List<BrowserTab> { t } : ordered.Where(x => x.Group == t.Group).ToList())
+            {
+                added.Add(x);
+                ws.Tabs.Add(x);
+            }
+        }
+        if (d.ActiveTab >= 0 && d.ActiveTab < loaded.Count) ws.ActiveTab = loaded[d.ActiveTab];
+        ws.RefreshStrip();
         return ws;
     }
 
@@ -136,7 +267,11 @@ public sealed class Workspace : Observable
             Accent = Accent,
             Links = Links,
             ActiveTab = ActiveTab != null ? Math.Max(0, saved.IndexOf(ActiveTab)) : 0,
-            Tabs = saved.Select(t => new TabData { Url = UrlTools.IsStart(t.Url) ? "" : t.Url, Title = t.Title }).ToList(),
+            Tabs = saved.Select(t => new TabData
+            {
+                Url = UrlTools.IsNewTab(t.Url) ? "" : t.Url, Title = t.Title, Pinned = t.IsPinned, Group = t.Group?.Id,
+            }).ToList(),
+            Groups = Groups.Where(g => saved.Any(t => t.Group == g)).Select(g => g.ToData()).ToList(),
         };
     }
 }
@@ -159,6 +294,10 @@ public sealed class PanelApp : Observable
     public string Url { get; }
     public WebView2? View { get; set; }
     public bool IsCurrent { get => _isCurrent; set => Set(ref _isCurrent, value); }
+
+    bool _isShown;
+    /// <summary>Открыто в боковой панели прямо сейчас (для подсветки значка в левой панели).</summary>
+    public bool IsShown { get => _isShown; set => Set(ref _isShown, value); }
 }
 
 public sealed class PaletteItem

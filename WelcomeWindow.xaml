@@ -4,32 +4,32 @@
         Title="Снежный браузер" Icon="Assets/app.ico"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
         ShowInTaskbar="True" SizeToContent="Height" Width="700" WindowStartupLocation="CenterScreen"
-        FontFamily="{StaticResource UiFont}" FontSize="13" Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}" FontSize="13" Foreground="{DynamicResource TextBrush}"
         UseLayoutRounding="True">
 
     <Window.Resources>
         <!-- Карточка шаблона -->
         <Style x:Key="CardRadio" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Bd" CornerRadius="12" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource LineBrush}"
+                        <Border x:Name="Bd" CornerRadius="12" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}"
                                 BorderThickness="1.5" Padding="14,14,14,16">
                             <ContentPresenter/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#3F5F80"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource SelectedBorderBrush}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#1A2E44"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -39,27 +39,27 @@
 
         <!-- Кнопка-«таблетка» поисковика -->
         <Style x:Key="ChipRadio" TargetType="RadioButton">
-            <Setter Property="Foreground" Value="{StaticResource SoftTextBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SoftTextBrush}"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Bd" CornerRadius="17" Height="34" Padding="16,0" Background="{StaticResource SurfaceBrush}"
-                                BorderBrush="{StaticResource LineBrush}" BorderThickness="1.5">
+                        <Border x:Name="Bd" CornerRadius="17" Height="34" Padding="16,0" Background="{DynamicResource SurfaceBrush}"
+                                BorderBrush="{DynamicResource LineBrush}" BorderThickness="1.5">
                             <ContentPresenter VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource HoverBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#3F5F80"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource SelectedBorderBrush}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#1A2E44"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource SelectedBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -68,10 +68,10 @@
         </Style>
     </Window.Resources>
 
-    <Border Margin="20" CornerRadius="16" Background="{StaticResource PopupBrush}" BorderBrush="#2A3747" BorderThickness="1"
+    <Border Margin="20" CornerRadius="16" Background="{DynamicResource PopupBrush}" BorderBrush="{DynamicResource PopupBorderBrush}" BorderThickness="1"
             Padding="28,22,28,24">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="28" ShadowDepth="6" Opacity="0.55" Color="Black"/>
+            <DropShadowEffect BlurRadius="28" ShadowDepth="6" Opacity="0.4" Color="Black"/>
         </Border.Effect>
         <StackPanel>
             <DockPanel>
@@ -79,14 +79,14 @@
                         VerticalAlignment="Top" Click="Close_Click" ToolTip="Закрыть (будут обычные настройки)"
                         AutomationProperties.Name="Закрыть"/>
                 <StackPanel Orientation="Horizontal">
-                    <Path x:Name="Logo" Stroke="{StaticResource AccentBrush}" StrokeThickness="2.2"
+                    <Path x:Name="Logo" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2.2"
                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" Width="30" Height="30"/>
                     <TextBlock Text="Снежный браузер" FontSize="20" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
             </DockPanel>
 
             <TextBlock Text="Добро пожаловать! С чего начнём?" FontSize="15.5" FontWeight="SemiBold" Margin="0,20,0,0"/>
-            <TextBlock Margin="0,6,0,0" Foreground="{StaticResource SoftTextBrush}" TextWrapping="Wrap" LineHeight="19"
+            <TextBlock Margin="0,6,0,0" Foreground="{DynamicResource SoftTextBrush}" TextWrapping="Wrap" LineHeight="19"
                        Text="Пространства — это отдельные наборы вкладок и плиток, например для дома и для работы. Потом всё меняется: пространства — правым кликом слева, плитки — на стартовой."/>
 
             <UniformGrid x:Name="TemplateList" Columns="3" Margin="-5,16,-5,0"/>
@@ -98,10 +98,10 @@
                 <Button DockPanel.Dock="Right" Content="Начать" Style="{StaticResource AccentButton}" IsDefault="True"
                         Height="38" Padding="26,0" FontSize="13.5" Click="Start_Click"/>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
-                    <TextBlock Text="&#xE72E;" FontFamily="{StaticResource IconFont}" Foreground="{StaticResource GoodBrush}"
+                    <TextBlock Text="&#xE72E;" FontFamily="{StaticResource IconFont}" Foreground="{DynamicResource GoodBrush}"
                                VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock Text="Вкладки, история и пароли хранятся только на этом компьютере." FontSize="12"
-                               Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                               Foreground="{DynamicResource MutedBrush}" VerticalAlignment="Center" TextWrapping="Wrap"/>
                 </StackPanel>
             </DockPanel>
         </StackPanel>

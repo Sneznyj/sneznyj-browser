@@ -14,6 +14,13 @@ using Microsoft.Web.WebView2.Wpf;
 
 namespace SneznyjBrowser;
 
+/// <summary>
+/// Главное окно. Код разложен по частям:
+/// здесь — запуск, пространства, вкладки и движок страниц;
+/// Layout — левая панель и темы; Tabs — полоса вкладок, группы, перетаскивание;
+/// Menu — главное меню и команды; Pages — внутренние страницы (настройки, история…);
+/// Bookmarks, Downloads, Address — закладки, загрузки, подсказки адресной строки; Gestures — жесты мыши.
+/// </summary>
 public partial class MainWindow : Window
 {
     readonly string[] _startupArgs;
@@ -21,12 +28,15 @@ public partial class MainWindow : Window
     readonly SessionData _session;
     readonly AdBlocker _blocker;
     readonly HistoryStore _history;
+    readonly BookmarkStore _bookmarks;
+    readonly DownloadStore _downloads;
+    readonly Dictionary<string, double> _zoom;
     readonly ObservableCollection<Workspace> _workspaces = new();
     readonly ObservableCollection<PanelApp> _panelApps = new();
     readonly List<TabData> _closed;
+    readonly HashSet<string> _httpAllowed = new(StringComparer.OrdinalIgnoreCase);
     readonly DispatcherTimer _saveTimer;
     readonly DispatcherTimer _sleepTimer;
-    readonly DispatcherTimer _toastTimer;
     readonly DispatcherTimer _updateTimer;
     readonly Updater _updater;
     UpdateManifest? _update;
@@ -36,13 +46,11 @@ public partial class MainWindow : Window
     Workspace? _current;
     PanelApp? _panelApp;
     bool _panelOpen;
-    bool _syncingSelection;
     bool _ready;
     bool _isFullscreen, _manualFullscreen;
     Rect _preFullscreenBounds;
     WindowState _preFullscreenState;
-
-    static readonly System.Drawing.Color WebBackground = System.Drawing.Color.FromArgb(255, 11, 15, 20);
+    NoticeWindow? _notice;
 
     public MainWindow(string[] args)
     {
@@ -57,24 +65,43 @@ public partial class MainWindow : Window
         _closed = _session.Closed ?? new();
         _blocker = new AdBlocker();
         _history = new HistoryStore(AppPaths.HistoryFile);
+        _bookmarks = new BookmarkStore(AppPaths.BookmarksFile);
+        _downloads = new DownloadStore(AppPaths.DownloadsFile);
+        _zoom = Json.Load<Dictionary<string, double>>(AppPaths.ZoomFile);
         _updater = new Updater(_settings);
 
         LogoPath.Data = Snowflake.Create(20);
+        RailLogo.Data = Snowflake.Create(18);
         var saved = _session.Workspaces is { Count: > 0 } ? _session.Workspaces : Defaults.Workspaces();
         foreach (var w in saved) _workspaces.Add(Workspace.FromData(w));
+        if (_settings.OnStartup == "start")
+        {
+            // «Начинать со стартовой»: остаются только закреплённые вкладки.
+            foreach (var ws in _workspaces)
+            {
+                foreach (var t in ws.Tabs.Where(t => !t.IsPinned).ToList()) ws.Tabs.Remove(t);
+                ws.ActiveTab = null;
+                ws.RefreshStrip();
+            }
+        }
         foreach (var p in _settings.PanelApps!) _panelApps.Add(new PanelApp(p));
         WorkspaceList.ItemsSource = _workspaces;
+        WorkspaceRows.ItemsSource = _workspaces;
+        RailWorkspaces.ItemsSource = _workspaces;
         PanelAppList.ItemsSource = _panelApps;
+        RailApps.ItemsSource = _panelApps;
+        DockApps.ItemsSource = _panelApps;
+        RowApps.ItemsSource = _panelApps;
+        BookmarkBarItems.ItemsSource = _bookmarks.BarItems;
         RestorePlacement();
 
         _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
         _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); SaveSession(); };
         _sleepTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
         _sleepTimer.Tick += (_, _) => SleepHiddenTabs();
-        _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.8) };
-        _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); Toast.Visibility = Visibility.Collapsed; };
         _updateTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
         _updateTimer.Tick += (_, _) => OnUpdateTimer();
+        InitLayout();
 
         SourceInitialized += (_, _) => Native.StyleWindow(this);
         StateChanged += (_, _) => OnWindowStateChanged();
@@ -82,6 +109,9 @@ public partial class MainWindow : Window
         Closing += OnClosing;
         PreviewKeyDown += OnKey;
         AddHandler(KeyDownEvent, new KeyEventHandler(OnKey));
+        Themes.Changed += OnThemeChanged;
+        _bookmarks.Changed += OnBookmarksChanged;
+        _downloads.Changed += OnDownloadsChanged;
     }
 
     // ───────────────────────── запуск и сохранение ─────────────────────────
@@ -102,22 +132,38 @@ public partial class MainWindow : Window
             return;
         }
 
+        _notice = new NoticeWindow(this);
+        _notice.SetAnchor(PageRectDip);
+        _notice.UpdateNowBtn.Click += UpdateNow_Click;
+        _notice.UpdateLaterBtn.Click += UpdateLater_Click;
+        LocationChanged += (_, _) => OnWindowMoved();
+        SizeChanged += (_, _) => OnWindowMoved();
+
+        InternalPages.WriteAll();
         StartPage.Write(_workspaces, _settings);
         _ready = true;
+        CreatePanelOverlay();
+        ApplyLayout();
         OnWindowStateChanged();
         SwitchWorkspace(_workspaces.FirstOrDefault(w => w.Id == _session.ActiveWorkspace) ?? _workspaces[0]);
+        if (_settings.OnStartup == "start" && _current?.ActiveTab is { } first && !UrlTools.IsNewTab(first.Url)) OpenNewTab();
         OpenFromOutside(_startupArgs);
         if (_session.PanelOpen)
             OpenPanel(_panelApps.FirstOrDefault(a => a.Id == _session.PanelApp) ?? _panelApps.FirstOrDefault());
         _sleepTimer.Start();
         if (_startupArgs.Contains("--updated")) ShowToast($"Браузер обновлён до версии {Updater.CurrentText}");
         StartUpdates();
+        StartGestures();
+        RefreshBookmarkBar();
+        OnDownloadsChanged();
     }
 
     void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         SaveSession();
         _history.Save();
+        _downloads.Save();
+        StopGestures();
     }
 
     void QueueSave()
@@ -188,6 +234,7 @@ public partial class MainWindow : Window
             if (a.StartsWith("--panel=") && _panelApps.FirstOrDefault(p => p.Id == a[8..]) is { } app) { OpenPanel(app); continue; }
             if (a == "--no-activate") { activate = false; continue; }
             if (a == "--check-updates") { CheckForUpdates(manual: true); continue; }
+            if (a.StartsWith("--cmd=")) { RunTestCommand(a[6..]); continue; }
             if (a.StartsWith("--")) continue;
             var url = File.Exists(a) ? new Uri(Path.GetFullPath(a)).AbsoluteUri : UrlTools.ToUrl(a, _settings.SearchEngine);
             if (url.Length > 0) last = NewTab(_current, url);
@@ -212,12 +259,13 @@ public partial class MainWindow : Window
         }
         _current = ws;
         ws.IsCurrent = true;
-        _syncingSelection = true;
-        TabList.ItemsSource = ws.Tabs;
-        _syncingSelection = false;
+        ws.RefreshStrip();
+        TopTabs.ItemsSource = ws.Strip;
+        SideTabs.ItemsSource = ws.Strip;
+        RailTabs.ItemsSource = ws.Strip;
         var tab = focus ?? ws.ActiveTab ?? ws.Tabs.FirstOrDefault() ?? NewTab(ws, "");
         ActivateTab(tab);
-        if (UrlTools.IsBlankOrStart(tab.Url)) FocusAddress();
+        if (UrlTools.IsNewTab(tab.Url)) FocusAddress();
     }
 
     void UpdateWorkspaceHeader()
@@ -225,10 +273,13 @@ public partial class MainWindow : Window
         if (_current == null) return;
         WsTitle.Text = _current.Name.ToUpperInvariant();
         int n = _current.Tabs.Count;
-        WsCount.Text = n == 1 ? "1 вкладка" : n is >= 2 and <= 4 ? $"{n} вкладки" : $"{n} вкладок";
+        WsCount.Text = $"{n} " + Plural(n, "вкладка", "вкладки", "вкладок");
     }
 
-    Workspace? WorkspaceOf(object sender) => (sender as FrameworkElement)?.DataContext as Workspace;
+    static string Plural(int n, string one, string few, string many) =>
+        (n % 10 == 1 && n % 100 != 11) ? one : (n % 10 is >= 2 and <= 4 && n % 100 is < 12 or > 14) ? few : many;
+
+    static Workspace? WorkspaceOf(object sender) => (sender as FrameworkElement)?.DataContext as Workspace;
 
     void Workspace_Click(object sender, RoutedEventArgs e)
     {
@@ -293,15 +344,20 @@ public partial class MainWindow : Window
 
     // ───────────────────────── вкладки ─────────────────────────
 
-    BrowserTab NewTab(Workspace ws, string url, string? title = null, int? index = null, bool isPrivate = false)
+    BrowserTab NewTab(Workspace ws, string url, string? title = null, int? index = null, bool isPrivate = false, TabGroup? group = null)
     {
         var tab = new BrowserTab { Workspace = ws, Url = url, IsPrivate = isPrivate };
-        tab.Title = title ?? (UrlTools.IsBlankOrStart(url)
+        tab.Title = title ?? (UrlTools.IsNewTab(url)
             ? (isPrivate ? "Приватная вкладка" : "Новая вкладка")
-            : UrlTools.SiteKey(UrlTools.Host(url)));
-        if (!isPrivate && !UrlTools.IsBlankOrStart(url)) tab.Favicon = Favicons.Load(UrlTools.Host(url));
-        if (index is int i && i >= 0 && i <= ws.Tabs.Count) ws.Tabs.Insert(i, tab);
+            : UrlTools.InternalPage(url) is { } page ? UrlTools.Pages[page].Title : UrlTools.SiteKey(UrlTools.Host(url)));
+        if (!isPrivate && UrlTools.IsWeb(url)) tab.Favicon = Favicons.Load(UrlTools.Host(url));
+        int pinned = ws.Tabs.Count(t => t.IsPinned);
+        if (index is int i && i >= 0 && i <= ws.Tabs.Count) ws.Tabs.Insert(Math.Max(i, pinned), tab);
         else ws.Tabs.Add(tab);
+        // Вкладка, открытая из группы, остаётся в этой группе (как в Chrome и Яндексе).
+        if (group != null && ws.Groups.Contains(group)) tab.Group = group;
+        FixGroupAfterMove(tab);
+        ws.RefreshStrip();
         if (ws == _current) UpdateWorkspaceHeader();
         QueueSave();
         return tab;
@@ -319,8 +375,23 @@ public partial class MainWindow : Window
     {
         if (_current == null) return;
         var tab = _current.ActiveTab;
-        if (tab != null && UrlTools.IsBlankOrStart(tab.Url)) Navigate(tab, url);
-        else ActivateTab(NewTab(_current, url, null, tab != null ? _current.Tabs.IndexOf(tab) + 1 : null, tab?.IsPrivate == true));
+        if (tab != null && UrlTools.IsNewTab(tab.Url)) Navigate(tab, url);
+        else ActivateTab(NewTab(_current, url, null, tab != null ? _current.Tabs.IndexOf(tab) + 1 : null, tab?.IsPrivate == true, tab?.Group));
+    }
+
+    /// <summary>Внутренняя страница (настройки, история…): если уже открыта — перейти к ней.</summary>
+    void OpenInternal(string page, string? anchor = null)
+    {
+        if (_current == null) return;
+        var url = UrlTools.PageUrl(page, anchor);
+        var existing = _current.Tabs.FirstOrDefault(t => UrlTools.InternalPage(t.Url) == page);
+        if (existing != null)
+        {
+            ActivateTab(existing);
+            if (anchor != null) Navigate(existing, url);
+            return;
+        }
+        OpenSmart(url);
     }
 
     void ActivateTab(BrowserTab tab, bool createView = true)
@@ -328,43 +399,70 @@ public partial class MainWindow : Window
         if (!_ready) return;
         if (tab.Workspace != _current) { SwitchWorkspace(tab.Workspace, tab); return; }
         var ws = tab.Workspace;
+        if (tab.Group is { Collapsed: true } g)
+        {
+            g.Collapsed = false;
+            ws.RefreshStrip();
+        }
         var prev = ws.ActiveTab;
         ws.ActiveTab = tab;
-        if (prev != null && prev != tab) HideView(prev);
+        if (prev != null && prev != tab)
+        {
+            HideView(prev);
+            prev.IsActive = false;
+        }
+        foreach (var t in ws.Tabs) if (t != tab && t.IsActive) t.IsActive = false;
+        tab.IsActive = true;
+        if (prev != tab)
+        {
+            HideSuggestions();
+            SetAddressText(UrlTools.Display(tab.Url));
+            if (FindBar.Visibility == Visibility.Visible) { StopFind(); RunFind(); }
+        }
         if (tab.View != null) ShowView(tab);
         else if (createView) _ = EnsureView(tab, navigate: true);
 
-        _syncingSelection = true;
-        TabList.SelectedItem = tab;
-        TabList.ScrollIntoView(tab);
-        _syncingSelection = false;
-
+        BringTabIntoView(tab);
         UpdateWorkspaceHeader();
         UpdateChrome();
         QueueSave();
     }
 
-    void CloseTab(BrowserTab tab)
+    void CloseTab(BrowserTab tab, bool keepView = false)
     {
         var ws = tab.Workspace;
         int index = ws.Tabs.IndexOf(tab);
         if (index < 0) return;
-        if (!tab.IsPrivate && UrlTools.IsWeb(tab.Url))
+        if (!keepView && !tab.IsPrivate && (UrlTools.IsWeb(tab.Url) || UrlTools.InternalPage(tab.Url) != null))
         {
-            _closed.Add(new TabData { Url = tab.Url, Title = tab.Title, WorkspaceId = ws.Id });
+            _closed.Add(new TabData { Url = tab.Url, Title = tab.Title, WorkspaceId = ws.Id, Pinned = tab.IsPinned });
             if (_closed.Count > 40) _closed.RemoveAt(0);
         }
         bool wasActive = ws.ActiveTab == tab;
         ws.Tabs.RemoveAt(index);
-        DisposeView(tab);
+        tab.IsActive = false;
+        if (keepView && tab.View != null)
+        {
+            // Страница отдаёт файл: вкладку убираем, а сам движок живёт, пока файл не скачается.
+            tab.View.Visibility = Visibility.Collapsed;
+            _downloadViews.Add(tab.View);
+            tab.View = null;
+        }
+        else DisposeView(tab);
+        ws.RefreshStrip();
         if (wasActive)
         {
             ws.ActiveTab = null;
             if (ws == _current)
             {
-                var next = ws.Tabs.Count > 0 ? ws.Tabs[Math.Min(index, ws.Tabs.Count - 1)] : NewTab(ws, "");
+                // Как в Яндексе: следующей становится соседняя вкладка той же группы, иначе — справа.
+                BrowserTab? next = null;
+                if (tab.Group != null)
+                    next = ws.Tabs.Skip(Math.Min(index, ws.Tabs.Count)).FirstOrDefault(t => t.Group == tab.Group)
+                           ?? ws.Tabs.Take(index).LastOrDefault(t => t.Group == tab.Group);
+                next ??= ws.Tabs.Count > 0 ? ws.Tabs[Math.Min(index, ws.Tabs.Count - 1)] : NewTab(ws, "");
                 ActivateTab(next);
-                if (UrlTools.IsBlankOrStart(next.Url)) FocusAddress();
+                if (UrlTools.IsNewTab(next.Url)) FocusAddress();
             }
         }
         if (ws == _current) UpdateWorkspaceHeader();
@@ -382,13 +480,17 @@ public partial class MainWindow : Window
         var data = _closed[^1];
         _closed.RemoveAt(_closed.Count - 1);
         var ws = _workspaces.FirstOrDefault(w => w.Id == data.WorkspaceId) ?? _current!;
-        ActivateTab(NewTab(ws, data.Url, data.Title));
+        var tab = NewTab(ws, data.Url, data.Title, data.Pinned ? 0 : null);
+        if (data.Pinned) { tab.IsPinned = true; ws.RefreshStrip(); }
+        ActivateTab(tab);
     }
 
     void DuplicateTab(BrowserTab tab)
     {
         var ws = tab.Workspace;
-        ActivateTab(NewTab(ws, tab.Url, tab.Title, ws.Tabs.IndexOf(tab) + 1, tab.IsPrivate));
+        var copy = NewTab(ws, tab.Url, tab.Title, ws.Tabs.IndexOf(tab) + 1, tab.IsPrivate, tab.Group);
+        if (tab.IsPinned) { copy.IsPinned = true; ws.RefreshStrip(); }
+        ActivateTab(copy);
     }
 
     void MoveTab(BrowserTab tab, Workspace target)
@@ -398,6 +500,9 @@ public partial class MainWindow : Window
         bool wasActive = source.ActiveTab == tab;
         int index = source.Tabs.IndexOf(tab);
         source.Tabs.Remove(tab);
+        tab.Group = null;
+        tab.IsActive = false;
+        source.RefreshStrip();
         if (wasActive)
         {
             source.ActiveTab = null;
@@ -406,7 +511,9 @@ public partial class MainWindow : Window
                 ActivateTab(source.Tabs.Count > 0 ? source.Tabs[Math.Min(index, source.Tabs.Count - 1)] : NewTab(source, ""));
         }
         tab.Workspace = target;
-        target.Tabs.Add(tab);
+        if (tab.IsPinned) target.Tabs.Insert(target.Tabs.Count(t => t.IsPinned), tab);
+        else target.Tabs.Add(tab);
+        target.RefreshStrip();
         UpdateWorkspaceHeader();
         ShowToast($"Вкладка перенесена в «{target.Name}»");
         QueueSave();
@@ -414,9 +521,11 @@ public partial class MainWindow : Window
 
     void CycleTab(int step)
     {
-        if (_current?.ActiveTab is not { } tab || _current.Tabs.Count < 2) return;
-        int i = (_current.Tabs.IndexOf(tab) + step + _current.Tabs.Count) % _current.Tabs.Count;
-        ActivateTab(_current.Tabs[i]);
+        if (_current?.ActiveTab is not { } tab) return;
+        var visible = _current.Strip.OfType<BrowserTab>().ToList();
+        if (visible.Count < 2) return;
+        int i = (visible.IndexOf(tab) + step + visible.Count) % visible.Count;
+        ActivateTab(visible[i]);
     }
 
     void SelectTabByNumber(int n)
@@ -430,58 +539,6 @@ public partial class MainWindow : Window
         if (n < _workspaces.Count) SwitchWorkspace(_workspaces[n]);
     }
 
-    void TabList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_syncingSelection || TabList.SelectedItem is not BrowserTab tab || tab == _current?.ActiveTab) return;
-        ActivateTab(tab);
-        if (UrlTools.IsBlankOrStart(tab.Url)) FocusAddress(); else FocusPage();
-    }
-
-    static BrowserTab? TabFromSource(object? source)
-    {
-        var d = source as DependencyObject;
-        while (d != null)
-        {
-            if (d is FrameworkElement { DataContext: BrowserTab t }) return t;
-            d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
-        }
-        return null;
-    }
-
-    void TabList_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton == MouseButton.Middle && TabFromSource(e.OriginalSource) is { } tab)
-        {
-            CloseTab(tab);
-            e.Handled = true;
-        }
-    }
-
-    void TabList_PreviewMouseRightButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        if (TabFromSource(e.OriginalSource) is not { } tab) return;
-        var menu = new ContextMenu();
-        void Add(string header, Action action, bool enabled = true)
-        {
-            var item = new MenuItem { Header = header, IsEnabled = enabled };
-            item.Click += (_, _) => action();
-            menu.Items.Add(item);
-        }
-        Add("Закрыть вкладку", () => CloseTab(tab));
-        Add("Закрыть остальные", () =>
-        {
-            foreach (var t in tab.Workspace.Tabs.Where(t => t != tab).ToList()) CloseTab(t);
-        }, tab.Workspace.Tabs.Count > 1);
-        Add("Дублировать", () => DuplicateTab(tab));
-        Add("Добавить на стартовую", () => AddToStart(tab), UrlTools.IsWeb(tab.Url) && !tab.IsPrivate);
-        menu.Items.Add(new Separator());
-        foreach (var ws in _workspaces.Where(w => w != tab.Workspace))
-            Add($"Перенести в «{ws.Name}»", () => MoveTab(tab, ws), !tab.IsPrivate);
-        menu.PlacementTarget = TabList;
-        menu.IsOpen = true;
-        e.Handled = true;
-    }
-
     void TabClose_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is BrowserTab tab) CloseTab(tab);
@@ -490,9 +547,13 @@ public partial class MainWindow : Window
 
     void TabMute_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is BrowserTab { View.CoreWebView2: { } core })
-            core.IsMuted = !core.IsMuted;
+        if ((sender as FrameworkElement)?.DataContext is BrowserTab tab) ToggleMute(tab);
         e.Handled = true;
+    }
+
+    void ToggleMute(BrowserTab tab)
+    {
+        if (tab.View?.CoreWebView2 is { } core) core.IsMuted = !core.IsMuted;
     }
 
     void NewTab_Click(object sender, RoutedEventArgs e) => OpenNewTab();
@@ -502,7 +563,7 @@ public partial class MainWindow : Window
     async Task EnsureView(BrowserTab tab, bool navigate)
     {
         if (tab.View != null || _env == null) return;
-        var view = new WebView2 { DefaultBackgroundColor = WebBackground };
+        var view = new WebView2 { DefaultBackgroundColor = Themes.ToDrawing(Themes.Current.PageBg) };
         tab.View = view;
         view.Visibility = tab == _current?.ActiveTab ? Visibility.Visible : Visibility.Collapsed;
         PageHost.Children.Add(view);
@@ -527,6 +588,7 @@ public partial class MainWindow : Window
         }
         if (tab.View != view || view.CoreWebView2 == null) return;
         Configure(view.CoreWebView2, tab, null);
+        view.ZoomFactorChanged += (_, _) => OnZoomChanged(tab);
         if (navigate) Navigate(tab, tab.Url);
         if (tab == _current?.ActiveTab) UpdateChrome();
     }
@@ -535,13 +597,14 @@ public partial class MainWindow : Window
     {
         var s = core.Settings;
         s.AreHostObjectsAllowed = false;          // страницы не достают до программы
-        s.IsWebMessageEnabled = tab != null;      // сообщения принимаются только от своей стартовой
+        s.IsWebMessageEnabled = tab != null;      // сообщения принимаются только от своих страниц (start.sneznyj)
         s.AreDevToolsEnabled = true;
         s.IsStatusBarEnabled = true;
         s.IsReputationCheckingRequired = true;    // SmartScreen: защита от фишинга и вирусов
         s.IsGeneralAutofillEnabled = _settings.Autofill;
         s.IsPasswordAutosaveEnabled = _settings.SavePasswords && tab?.IsPrivate != true;
         try { core.Profile.PreferredTrackingPreventionLevel = _settings.TrackingLevel(); } catch { }
+        ApplyColorScheme(core);
 
         core.SetVirtualHostNameToFolderMapping(UrlTools.StartHost, AppPaths.Start, CoreWebView2HostResourceAccessKind.Deny);
         foreach (var pattern in _blocker.Patterns)
@@ -549,10 +612,13 @@ public partial class MainWindow : Window
         core.WebResourceRequested += (_, e) => OnBlockable(core, e, tab);
         core.NewWindowRequested += (_, e) => OnNewWindow(e, tab);
         core.ContainsFullScreenElementChanged += (_, _) => SetFullscreen(core.ContainsFullScreenElement);
+        core.DownloadStarting += (_, e) => OnDownloadStarting(core, e);
+        core.ContextMenuRequested += (_, e) => OnContextMenu(core, e, tab);
         if (tab == null) return;
 
         core.NavigationStarting += (_, e) =>
         {
+            if (TryUpgradeToHttps(core, tab, e)) return;
             if (!e.IsRedirected) tab.Blocked = 0;
             tab.PendingUrl = e.Uri;
             tab.IsLoading = true;
@@ -562,23 +628,26 @@ public partial class MainWindow : Window
         {
             tab.IsLoading = false;
             tab.PendingUrl = null;
+            if (HttpsFallback(core, tab, e)) return;
             if (e.IsSuccess && !tab.IsPrivate) _history.Add(core.Source, core.DocumentTitle);
             if (tab == _current?.ActiveTab) UpdateChrome();
         };
         core.SourceChanged += (_, _) =>
         {
             tab.Url = core.Source;
-            if (UrlTools.IsStart(tab.Url))
+            if (UrlTools.IsNewTab(tab.Url))
             {
                 tab.Title = tab.IsPrivate ? "Приватная вкладка" : "Новая вкладка";
                 tab.Favicon = null;
             }
+            else if (UrlTools.IsStart(tab.Url)) tab.Favicon = null;
+            ApplySiteZoom(tab);
             if (tab == _current?.ActiveTab) UpdateChrome();
             QueueSave();
         };
         core.DocumentTitleChanged += (_, _) =>
         {
-            if (UrlTools.IsStart(core.Source)) return;
+            if (UrlTools.IsNewTab(core.Source)) return;
             var title = core.DocumentTitle;
             tab.Title = string.IsNullOrWhiteSpace(title) ? UrlTools.SiteKey(UrlTools.Host(core.Source)) : title;
             if (!tab.IsPrivate) _history.UpdateTitle(core.Source, tab.Title);
@@ -600,7 +669,7 @@ public partial class MainWindow : Window
         core.WindowCloseRequested += (_, _) => CloseTab(tab);
         core.IsDocumentPlayingAudioChanged += (_, _) => tab.IsAudible = core.IsDocumentPlayingAudio;
         core.IsMutedChanged += (_, _) => tab.IsMuted = core.IsMuted;
-        core.WebMessageReceived += (_, e) => OnStartMessage(e);
+        core.WebMessageReceived += (_, e) => OnPageMessage(core, tab, e);
         core.ProcessFailed += (_, e) =>
         {
             if (e.ProcessFailedKind is CoreWebView2ProcessFailedKind.RenderProcessExited or CoreWebView2ProcessFailedKind.RenderProcessUnresponsive)
@@ -609,6 +678,57 @@ public partial class MainWindow : Window
                 tab.Title = "Страница упала — нажмите F5";
             }
         };
+    }
+
+    void ApplyColorScheme(CoreWebView2 core)
+    {
+        try
+        {
+            core.Profile.PreferredColorScheme = _settings.SitesScheme switch
+            {
+                "light" => CoreWebView2PreferredColorScheme.Light,
+                "dark" => CoreWebView2PreferredColorScheme.Dark,
+                _ => Themes.Current.IsDark ? CoreWebView2PreferredColorScheme.Dark : CoreWebView2PreferredColorScheme.Light,
+            };
+        }
+        catch { }
+    }
+
+    /// <summary>«Сначала HTTPS»: ссылку http:// пробуем открыть защищённо, а если сайт не умеет — открываем как есть.</summary>
+    bool TryUpgradeToHttps(CoreWebView2 core, BrowserTab tab, CoreWebView2NavigationStartingEventArgs e)
+    {
+        if (!_settings.HttpsFirst) return false;
+        if (!e.Uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) return false;
+        if (e.NavigationKind != CoreWebView2NavigationKind.NewDocument) return false;
+        var host = UrlTools.Host(e.Uri);
+        if (host.Length == 0 || _httpAllowed.Contains(host) || UrlTools.IsLocalHost(host)) return false;
+        if (tab.HttpsUpgradeFrom != null && string.Equals(UrlTools.Host(tab.HttpsUpgradeFrom), host, StringComparison.OrdinalIgnoreCase))
+        {
+            // Сайт сам вернул нас на http — значит, https у него нет.
+            _httpAllowed.Add(host);
+            tab.HttpsUpgradeFrom = null;
+            return false;
+        }
+        e.Cancel = true;
+        tab.HttpsUpgradeFrom = e.Uri;
+        var secure = "https://" + e.Uri[7..];
+        Dispatcher.BeginInvoke(() => { try { core.Navigate(secure); } catch { } });
+        return true;
+    }
+
+    bool HttpsFallback(CoreWebView2 core, BrowserTab tab, CoreWebView2NavigationCompletedEventArgs e)
+    {
+        if (tab.HttpsUpgradeFrom is not { } original) return false;
+        if (e.IsSuccess || e.WebErrorStatus == CoreWebView2WebErrorStatus.OperationCanceled)
+        {
+            if (e.IsSuccess) tab.HttpsUpgradeFrom = null;
+            return false;
+        }
+        tab.HttpsUpgradeFrom = null;
+        _httpAllowed.Add(UrlTools.Host(original));
+        try { core.Navigate(original); } catch { }
+        if (tab == _current?.ActiveTab) ShowToast("У сайта нет защищённого соединения — открыт обычный http. Не вводите там пароли.");
+        return true;
     }
 
     void OnBlockable(CoreWebView2 core, CoreWebView2WebResourceRequestedEventArgs e, BrowserTab? tab)
@@ -635,14 +755,14 @@ public partial class MainWindow : Window
             return;
         }
         var ws = opener?.Workspace ?? _current!;
-        int index = opener != null ? ws.Tabs.IndexOf(opener) + 1 : ws.Tabs.Count;
+        int index = opener != null && _settings.OpenNearCurrent ? NextIndexAfter(opener) : ws.Tabs.Count;
         bool isPrivate = opener?.IsPrivate == true;
 
         // Ctrl+клик — открыть в фоне, страница загрузится при переходе на вкладку.
         if (Native.IsKeyDown(0x11))
         {
             e.Handled = true;
-            NewTab(ws, e.Uri, null, index, isPrivate);
+            NewTab(ws, e.Uri, null, index, isPrivate, opener?.Group);
             ShowToast("Открыто в фоновой вкладке");
             return;
         }
@@ -650,7 +770,7 @@ public partial class MainWindow : Window
         var deferral = e.GetDeferral();
         try
         {
-            var tab = NewTab(ws, e.Uri, null, index, isPrivate);
+            var tab = NewTab(ws, e.Uri, null, index, isPrivate, opener?.Group);
             ActivateTab(tab, createView: false);
             await EnsureView(tab, navigate: false);
             if (tab.View?.CoreWebView2 is { } core) e.NewWindow = core;   // окно-«ребёнок» знает родителя: входы через Google и т. п. работают
@@ -667,42 +787,19 @@ public partial class MainWindow : Window
         }
     }
 
-    void OnStartMessage(CoreWebView2WebMessageReceivedEventArgs e)
+    /// <summary>Куда вставить вкладку, открытую из opener: после неё и уже открытых из неё же соседей группы.</summary>
+    int NextIndexAfter(BrowserTab opener)
     {
-        if (!UrlTools.IsStart(e.Source)) return;
-        try
-        {
-            using var doc = JsonDocument.Parse(e.WebMessageAsJson);
-            var root = doc.RootElement;
-            var cmd = root.GetProperty("cmd").GetString();
-            var ws = _workspaces.FirstOrDefault(w => w.Id == root.GetProperty("ws").GetString());
-            if (ws == null) return;
-            var url = root.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "";
-            if (cmd == "removeLink")
-            {
-                ws.Links.RemoveAll(l => l.Url == url);
-            }
-            else if (cmd == "addLink")
-            {
-                url = UrlTools.ToUrl(url, _settings.SearchEngine);
-                if (!UrlTools.IsWeb(url)) return;
-                var title = root.TryGetProperty("title", out var t) ? t.GetString() : null;
-                if (string.IsNullOrWhiteSpace(title)) title = UrlTools.SiteKey(UrlTools.Host(url));
-                ws.Links.Add(new QuickLink { Title = title.Trim(), Url = url });
-            }
-            else return;
-            StartPage.Write(_workspaces, _settings);
-            QueueSave();
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine(ex);
-        }
+        var tabs = opener.Workspace.Tabs;
+        int i = tabs.IndexOf(opener) + 1;
+        if (opener.Group != null)
+            while (i < tabs.Count && tabs[i].Group == opener.Group) i++;
+        return i;
     }
 
     void Navigate(BrowserTab tab, string url)
     {
-        if (UrlTools.IsBlankOrStart(url))
+        if (UrlTools.IsNewTab(url))
         {
             if (Favicons.Dirty) StartPage.Write(_workspaces, _settings);
             url = UrlTools.StartUrl(tab.Workspace.Id);
@@ -767,6 +864,11 @@ public partial class MainWindow : Window
 
     CoreWebView2? ActiveCore => _current?.ActiveTab?.View?.CoreWebView2;
 
+    IEnumerable<CoreWebView2> AllCores() =>
+        _workspaces.SelectMany(w => w.Tabs).Select(t => t.View?.CoreWebView2)
+            .Concat(_panelApps.Select(a => a.View?.CoreWebView2))
+            .Where(c => c != null)!;
+
     CoreWebView2? AnyNormalCore() =>
         _workspaces.SelectMany(w => w.Tabs).FirstOrDefault(t => !t.IsPrivate && t.View?.CoreWebView2 != null)?.View?.CoreWebView2
         ?? _panelApps.FirstOrDefault(a => a.View?.CoreWebView2 != null)?.View?.CoreWebView2;
@@ -777,32 +879,33 @@ public partial class MainWindow : Window
     {
         var tab = _current?.ActiveTab;
         if (tab == null) return;
-        if (!AddressBox.IsKeyboardFocusWithin) AddressBox.Text = UrlTools.Display(tab.Url);
+        if (!AddressBox.IsKeyboardFocusWithin) SetAddressText(UrlTools.Display(tab.Url));
         UpdatePlaceholder();
 
         var url = tab.Url ?? "";
-        if (UrlTools.IsBlankOrStart(url))
+        if (UrlTools.IsStart(url))
         {
-            SecurityIcon.Text = "";
-            SecurityIcon.Foreground = (Brush)FindResource("MutedBrush");
-            SecurityIcon.ToolTip = null;
+            SecurityIcon.Text = UrlTools.InternalPage(url) != null ? "" : "";
+            SecurityIcon.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            SecurityIcon.ToolTip = UrlTools.InternalPage(url) != null ? "Страница браузера" : null;
+            if (UrlTools.InternalPage(url) is { } p) SecurityIcon.Text = UrlTools.Pages[p].Glyph;
         }
         else if (url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
             SecurityIcon.Text = "";
-            SecurityIcon.Foreground = (Brush)FindResource("MutedBrush");
+            SecurityIcon.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             SecurityIcon.ToolTip = "Соединение защищено (HTTPS)";
         }
         else if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
         {
             SecurityIcon.Text = "";
-            SecurityIcon.Foreground = (Brush)FindResource("WarnBrush");
+            SecurityIcon.SetResourceReference(TextBlock.ForegroundProperty, "WarnBrush");
             SecurityIcon.ToolTip = "Соединение не защищено: не вводите здесь пароли и данные карт";
         }
         else
         {
-            SecurityIcon.Text = "";
-            SecurityIcon.Foreground = (Brush)FindResource("MutedBrush");
+            SecurityIcon.Text = UrlTools.IsNewTab(url) ? "" : "";
+            SecurityIcon.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             SecurityIcon.ToolTip = null;
         }
 
@@ -811,17 +914,22 @@ public partial class MainWindow : Window
         LoadBar.Visibility = tab.IsLoading ? Visibility.Visible : Visibility.Hidden;
         PrivateBadge.Visibility = tab.IsPrivate ? Visibility.Visible : Visibility.Collapsed;
         if (!AddressBox.IsKeyboardFocusWithin)
-            AddressBorder.BorderBrush = tab.IsPrivate ? (Brush)FindResource("PrivateBrush") : Brushes.Transparent;
+        {
+            if (tab.IsPrivate) AddressBorder.SetResourceReference(Border.BorderBrushProperty, "PrivateBrush");
+            else AddressBorder.BorderBrush = Brushes.Transparent;
+        }
         UpdateTitle();
         UpdateNavButtons();
         UpdateShield();
+        UpdateStar();
+        UpdateZoomChip();
     }
 
     void UpdateTitle()
     {
         var tab = _current?.ActiveTab;
         if (tab == null) return;
-        Title = (UrlTools.IsBlankOrStart(tab.Url) ? "Новая вкладка" : tab.Title) + " — Снежный браузер";
+        Title = (UrlTools.IsNewTab(tab.Url) ? "Новая вкладка" : tab.Title) + " — Снежный браузер";
     }
 
     void UpdateNavButtons()
@@ -837,20 +945,20 @@ public partial class MainWindow : Window
         var site = UrlTools.SiteKey(UrlTools.Host(tab?.Url));
         if (!_settings.AdBlock)
         {
-            ShieldIcon.Foreground = (Brush)FindResource("MutedBrush");
+            ShieldIcon.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             ShieldCount.Text = "выкл";
             ShieldBtn.ToolTip = "Блокировщик рекламы выключен везде. Нажмите, чтобы включить";
         }
         else if (UrlTools.IsWeb(tab?.Url) && _settings.IsAllowed(site))
         {
-            ShieldIcon.Foreground = (Brush)FindResource("MutedBrush");
+            ShieldIcon.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
             ShieldCount.Text = "пауза";
             ShieldBtn.ToolTip = $"На {site} блокировщик отключён. Нажмите, чтобы включить";
         }
         else
         {
             int n = tab?.Blocked ?? 0;
-            ShieldIcon.Foreground = (Brush)FindResource("GoodBrush");
+            ShieldIcon.SetResourceReference(TextBlock.ForegroundProperty, "GoodBrush");
             ShieldCount.Text = n.ToString();
             ShieldBtn.ToolTip = UrlTools.IsWeb(tab?.Url)
                 ? $"Заблокировано рекламы и трекеров: {n}.\nНажмите, чтобы отключить блокировщик на {site}"
@@ -876,49 +984,6 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(() => _current?.ActiveTab?.View?.Focus(), DispatcherPriority.Input);
     }
 
-    void AddressBox_KeyDown(object sender, KeyEventArgs e)
-    {
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (key == Key.Enter)
-        {
-            var url = UrlTools.ToUrl(AddressBox.Text, _settings.SearchEngine);
-            e.Handled = true;
-            if (url.Length == 0 || _current?.ActiveTab is not { } tab) return;
-            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
-                ActivateTab(NewTab(_current, url, null, _current.Tabs.IndexOf(tab) + 1, tab.IsPrivate));
-            else
-                Navigate(tab, url);
-            FocusPage();
-        }
-        else if (key == Key.Escape)
-        {
-            AddressBox.Text = UrlTools.Display(_current?.ActiveTab?.Url);
-            e.Handled = true;
-            FocusPage();
-        }
-    }
-
-    void AddressBox_TextChanged(object sender, TextChangedEventArgs e) => UpdatePlaceholder();
-
-    void AddressBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
-        AddressBox.SelectAll();
-        AddressBorder.BorderBrush = (Brush)FindResource("AccentBrush");
-    }
-
-    void AddressBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
-        AddressBorder.BorderBrush = Brushes.Transparent;
-        UpdateChrome();
-    }
-
-    void AddressBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (AddressBox.IsKeyboardFocusWithin) return;
-        AddressBox.Focus();
-        e.Handled = true;
-    }
-
     void Back_Click(object sender, RoutedEventArgs e) => GoBack();
     void Forward_Click(object sender, RoutedEventArgs e) => GoForward();
 
@@ -931,9 +996,10 @@ public partial class MainWindow : Window
     void GoBack() { if (ActiveCore is { CanGoBack: true } c) c.GoBack(); }
     void GoForward() { if (ActiveCore is { CanGoForward: true } c) c.GoForward(); }
 
-    void Reload()
+    void Reload() => ReloadTab(_current?.ActiveTab);
+
+    void ReloadTab(BrowserTab? tab)
     {
-        var tab = _current?.ActiveTab;
         if (tab == null) return;
         if (tab.View?.CoreWebView2 is { } core) core.Reload();
         else Navigate(tab, tab.Url);
@@ -969,11 +1035,6 @@ public partial class MainWindow : Window
         UpdateShield();
     }
 
-    void AddToStart_Click(object sender, RoutedEventArgs e)
-    {
-        if (_current?.ActiveTab is { } tab) AddToStart(tab);
-    }
-
     void AddToStart(BrowserTab tab)
     {
         if (!UrlTools.IsWeb(tab.Url) || tab.IsPrivate) { ShowToast("Эту страницу нельзя добавить на стартовую"); return; }
@@ -986,22 +1047,30 @@ public partial class MainWindow : Window
         ShowToast($"Добавлено на стартовую «{ws.Name}»");
     }
 
-    void ShowToast(string text)
+    void ShowToast(string text, string? actionText = null, Action? action = null) =>
+        _notice?.ShowToast(text, actionText, action);
+
+    /// <summary>Где страница на экране (единицы WPF) — для подсказок и окон поверх неё.</summary>
+    Rect PageRectDip()
     {
-        ToastText.Text = text;
-        Toast.Visibility = Visibility.Visible;
-        _toastTimer.Stop();
-        _toastTimer.Start();
+        if (!IsLoaded || PresentationSource.FromVisual(PageBorder) == null) return Rect.Empty;
+        var px = Native.ScreenRectPx(PageBorder);
+        var tl = Native.PxToDip(this, px.TopLeft);
+        var br = Native.PxToDip(this, px.BottomRight);
+        return new Rect(tl, br);
     }
 
-    // ───────────────────────── боковая панель ─────────────────────────
+    // ───────────────────────── боковая панель приложений ─────────────────────────
 
     void PanelToggle_Click(object sender, RoutedEventArgs e) => TogglePanel();
     void PanelClose_Click(object sender, RoutedEventArgs e) => ClosePanel();
 
     void PanelApp_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is PanelApp app) OpenPanel(app);
+        if ((sender as FrameworkElement)?.DataContext is not PanelApp app) return;
+        bool inPanelHeader = sender is DependencyObject d && PanelAppList.IsAncestorOf(d);
+        if (!inPanelHeader && _panelOpen && _panelApp == app) ClosePanel();   // повторный клик в левой панели — скрыть
+        else OpenPanel(app);
     }
 
     void PanelToTab_Click(object sender, RoutedEventArgs e)
@@ -1031,12 +1100,13 @@ public partial class MainWindow : Window
         foreach (var a in _panelApps)
         {
             a.IsCurrent = a == app;
+            a.IsShown = a == app;
             if (a.View != null) a.View.Visibility = a == app ? Visibility.Visible : Visibility.Collapsed;
         }
         QueueSave();
         if (app.View != null) return;
 
-        var view = new WebView2 { DefaultBackgroundColor = WebBackground };
+        var view = new WebView2 { DefaultBackgroundColor = Themes.ToDrawing(Themes.Current.PageBg) };
         app.View = view;
         PanelHost.Children.Add(view);
         try { await view.EnsureCoreWebView2Async(_env); }
@@ -1048,6 +1118,7 @@ public partial class MainWindow : Window
     void ClosePanel()
     {
         _panelOpen = false;
+        foreach (var a in _panelApps) a.IsShown = false;
         ShowPanelColumns(false);
         QueueSave();
     }
@@ -1056,7 +1127,7 @@ public partial class MainWindow : Window
     {
         PanelRoot.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         PanelSplitter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        SplitterCol.Width = new GridLength(show ? 8 : 0);
+        SplitterCol.Width = new GridLength(show ? 6 : 0);
         PanelCol.MinWidth = show ? 280 : 0;
         PanelCol.Width = new GridLength(show ? Math.Clamp(_session.PanelWidth, 280, 900) : 0);
         foreach (var a in _panelApps)
@@ -1098,45 +1169,50 @@ public partial class MainWindow : Window
 
     void ShowUpdate(UpdateManifest m)
     {
-        if (_updating) return;
+        if (_updating || _notice == null) return;
         _update = m;
-        UpdateHeading.Text = $"Новая версия {m.Version}";
-        UpdateNotes.Text = string.IsNullOrWhiteSpace(m.Notes) ? $"Сейчас у вас {Updater.CurrentText}." : m.Notes;
-        UpdateNotes.ToolTip = m.Notes.Length > 0 ? m.Notes : null;
-        UpdateProgress.Visibility = Visibility.Collapsed;
-        UpdateButtons.Visibility = Visibility.Visible;
-        UpdateNowBtn.Content = "Обновить";
-        UpdateCard.Visibility = Visibility.Visible;
+        var n = _notice;
+        n.UpdateHeading.Text = $"Новая версия {m.Version}";
+        n.UpdateNotes.Text = string.IsNullOrWhiteSpace(m.Notes) ? $"Сейчас у вас {Updater.CurrentText}." : m.Notes;
+        n.UpdateNotes.ToolTip = m.Notes.Length > 0 ? m.Notes : null;
+        n.UpdateProgress.Visibility = Visibility.Collapsed;
+        n.UpdateButtons.Visibility = Visibility.Visible;
+        n.UpdateNowBtn.Content = "Обновить";
+        n.UpdateCard.Visibility = Visibility.Visible;
+        n.Refresh();
     }
 
     void UpdateLater_Click(object sender, RoutedEventArgs e)
     {
         _updater.Postpone();
-        UpdateCard.Visibility = Visibility.Collapsed;
-        ShowToast("Напомню завтра. Обновиться сразу — Ctrl+K → «Проверить обновления»");
+        if (_notice == null) return;
+        _notice.UpdateCard.Visibility = Visibility.Collapsed;
+        _notice.Refresh();
+        ShowToast("Напомню завтра. Обновиться сразу — меню → «О браузере и обновления»");
     }
 
     async void UpdateNow_Click(object sender, RoutedEventArgs e)
     {
-        if (_update is not { } m || _updating) return;
+        if (_update is not { } m || _updating || _notice == null) return;
+        var n = _notice;
         _updating = true;
-        UpdateButtons.Visibility = Visibility.Collapsed;
-        UpdateProgress.Visibility = Visibility.Visible;
-        UpdateTrack.Visibility = UpdateFill.Visibility = Visibility.Visible;
-        UpdateStatus.Margin = new Thickness(0, 10, 0, 0);
-        UpdateFill.Width = 0;
+        n.UpdateButtons.Visibility = Visibility.Collapsed;
+        n.UpdateProgress.Visibility = Visibility.Visible;
+        n.UpdateTrack.Visibility = n.UpdateFill.Visibility = Visibility.Visible;
+        n.UpdateStatus.Margin = new Thickness(0, 10, 0, 0);
+        n.UpdateFill.Width = 0;
         double mb = m.Size / 1048576.0;
-        UpdateStatus.Text = $"Скачиваю… 0% из {mb:0} МБ";
+        n.UpdateStatus.Text = $"Скачиваю… 0% из {mb:0} МБ";
         var progress = new Progress<double>(p =>
         {
-            UpdateFill.Width = UpdateTrack.ActualWidth * Math.Clamp(p, 0, 1);
-            UpdateStatus.Text = $"Скачиваю… {p * 100:0}% из {mb:0} МБ";
+            n.UpdateFill.Width = n.UpdateTrack.ActualWidth * Math.Clamp(p, 0, 1);
+            n.UpdateStatus.Text = $"Скачиваю… {p * 100:0}% из {mb:0} МБ";
         });
         try
         {
             var path = await _updater.DownloadAsync(m, progress);
-            UpdateFill.Width = UpdateTrack.ActualWidth;
-            UpdateStatus.Text = "Подпись и контрольная сумма сходятся. Перезапускаю браузер, вкладки сохранятся…";
+            n.UpdateFill.Width = n.UpdateTrack.ActualWidth;
+            n.UpdateStatus.Text = "Подпись и контрольная сумма сходятся. Перезапускаю браузер, вкладки сохранятся…";
             await Task.Delay(900);
             SaveSession();
             Updater.RunInstaller(path, noActivate: !ShowActivated);
@@ -1146,11 +1222,11 @@ public partial class MainWindow : Window
         {
             Debug.WriteLine(ex);
             _updating = false;
-            UpdateTrack.Visibility = UpdateFill.Visibility = Visibility.Collapsed;
-            UpdateStatus.Margin = new Thickness(0);
-            UpdateStatus.Text = "Не получилось: " + ex.Message;
-            UpdateButtons.Visibility = Visibility.Visible;
-            UpdateNowBtn.Content = "Повторить";
+            n.UpdateTrack.Visibility = n.UpdateFill.Visibility = Visibility.Collapsed;
+            n.UpdateStatus.Margin = new Thickness(0);
+            n.UpdateStatus.Text = "Не получилось: " + ex.Message;
+            n.UpdateButtons.Visibility = Visibility.Visible;
+            n.UpdateNowBtn.Content = "Повторить";
         }
     }
 
@@ -1167,8 +1243,17 @@ public partial class MainWindow : Window
     {
         MaxBtn.Content = WindowState == WindowState.Maximized ? "" : "";
         MaxBtn.ToolTip = WindowState == WindowState.Maximized ? "Свернуть в окно" : "Развернуть";
+        CollapsePanelOverlay(immediate: true);
+        _notice?.Refresh();
         if (_isFullscreen) return;
         RootGrid.Margin = WindowState == WindowState.Maximized ? Native.MaximizedOverhang(this) : new Thickness(0);
+    }
+
+    void OnWindowMoved()
+    {
+        CollapsePanelOverlay(immediate: true);
+        _notice?.Reposition();
+        UpdateGestureTarget();
     }
 
     void SetFullscreen(bool on, bool manual = false)
@@ -1176,29 +1261,22 @@ public partial class MainWindow : Window
         if (on == _isFullscreen) return;
         _isFullscreen = on;
         _manualFullscreen = on && manual;
-        var chrome = new WindowChrome
-        {
-            CaptionHeight = on ? 0 : 46,
-            ResizeBorderThickness = new Thickness(on ? 0 : 6),
-            GlassFrameThickness = new Thickness(0, 0, 0, 1),
-            UseAeroCaptionButtons = false,
-            CornerRadius = new CornerRadius(0),
-        };
         if (on)
         {
             _preFullscreenState = WindowState;
             if (WindowState == WindowState.Maximized) WindowState = WindowState.Normal;
             _preFullscreenBounds = new Rect(Left, Top, Width, Height);
-            TopRow.Height = new GridLength(0);
-            SidebarCol.Width = new GridLength(0);
-            Sidebar.Visibility = Visibility.Collapsed;
-            BrandPanel.Visibility = Visibility.Collapsed;
-            TopBar.Visibility = Visibility.Collapsed;
-            ContentGrid.Margin = new Thickness(0);
+            CollapsePanelOverlay(immediate: true);
+            LeftHost.Visibility = Visibility.Collapsed;
+            TabRow.Visibility = Visibility.Collapsed;
+            Toolbar.Visibility = Visibility.Collapsed;
+            BookmarksBarRow.Visibility = Visibility.Collapsed;
+            FindBar.Visibility = Visibility.Collapsed;
+            CaptionButtons.Visibility = Visibility.Collapsed;
             PageBorder.BorderThickness = new Thickness(0);
             RootGrid.Margin = new Thickness(0);
             ShowPanelColumns(false);
-            WindowChrome.SetWindowChrome(this, chrome);
+            ApplyWindowChrome();
             Native.StyleWindow(this, rounded: false);
             var r = Native.MonitorBounds(this);
             Left = r.Left;
@@ -1209,25 +1287,35 @@ public partial class MainWindow : Window
         }
         else
         {
-            TopRow.Height = new GridLength(46);
-            SidebarCol.Width = new GridLength(248);
-            Sidebar.Visibility = Visibility.Visible;
-            BrandPanel.Visibility = Visibility.Visible;
-            TopBar.Visibility = Visibility.Visible;
-            ContentGrid.Margin = new Thickness(0, 0, 8, 8);
-            PageBorder.BorderThickness = new Thickness(1);
-            WindowChrome.SetWindowChrome(this, chrome);
+            LeftHost.Visibility = Visibility.Visible;
+            Toolbar.Visibility = Visibility.Visible;
+            CaptionButtons.Visibility = Visibility.Visible;
+            PageBorder.BorderThickness = new Thickness(0, 1, 0, 0);
             Native.StyleWindow(this);
             Left = _preFullscreenBounds.Left;
             Top = _preFullscreenBounds.Top;
             Width = _preFullscreenBounds.Width;
             Height = _preFullscreenBounds.Height;
             if (_preFullscreenState == WindowState.Maximized) WindowState = WindowState.Maximized;
+            ApplyLayout();
             OnWindowStateChanged();
             if (_panelOpen) ShowPanelColumns(true);
             if (ActiveCore is { ContainsFullScreenElement: true } core)
                 _ = core.ExecuteScriptAsync("document.exitFullscreen && document.exitFullscreen()");
         }
+    }
+
+    void ApplyWindowChrome()
+    {
+        bool top = _settings.TabsPosition == "top";
+        WindowChrome.SetWindowChrome(this, new WindowChrome
+        {
+            CaptionHeight = _isFullscreen ? 0 : top ? 40 : 46,
+            ResizeBorderThickness = new Thickness(_isFullscreen ? 0 : 6),
+            GlassFrameThickness = new Thickness(0, 0, 0, 1),
+            UseAeroCaptionButtons = false,
+            CornerRadius = new CornerRadius(0),
+        });
     }
 
     // ───────────────────────── клавиши ─────────────────────────
@@ -1249,17 +1337,30 @@ public partial class MainWindow : Window
                 case Key.T when shift: ReopenClosedTab(); break;
                 case Key.T: OpenNewTab(); break;
                 case Key.N when shift: OpenNewTab(isPrivate: true); break;
+                case Key.N: OpenNewTab(); break;
                 case Key.W:
                 case Key.F4: CloseActiveTab(); break;
                 case Key.L: FocusAddress(); break;
                 case Key.K: OpenPalette(); break;
-                case Key.D: AddToStart_Click(this, new RoutedEventArgs()); break;
+                case Key.D: ShowBookmarkPopup(); break;
                 case Key.B when shift: TogglePanel(); break;
+                case Key.O when shift: OpenInternal("bookmarks"); break;
+                case Key.H: OpenInternal("history"); break;
+                case Key.J: OpenInternal("downloads"); break;
+                case Key.Delete when shift: OpenInternal("settings", "privacy"); break;
+                case Key.S when shift: TakeScreenshot(fullPage: false); break;
+                case Key.F: StartFind(); break;
+                case Key.P: PrintPage(); break;
+                case Key.S: SavePageAs(); break;
+                case Key.OemPlus or Key.Add: ZoomStep(+1); break;
+                case Key.OemMinus or Key.Subtract: ZoomStep(-1); break;
+                case Key.D0 or Key.NumPad0: SetZoom(1.0); break;
                 case Key.Tab: CycleTab(shift ? -1 : 1); break;
                 case Key.PageDown: CycleTab(1); break;
                 case Key.PageUp: CycleTab(-1); break;
                 case Key.R: Reload(); break;
                 case >= Key.D1 and <= Key.D9 when !shift: SelectTabByNumber(key - Key.D1); break;
+                case Key.OemComma: OpenInternal("settings"); break;
                 default: handled = false; break;
             }
         }
@@ -1270,6 +1371,8 @@ public partial class MainWindow : Window
                 case Key.D: FocusAddress(); break;
                 case Key.Left: GoBack(); break;
                 case Key.Right: GoForward(); break;
+                case Key.Home: if (_current?.ActiveTab is { } t) Navigate(t, ""); break;
+                case Key.F or Key.E: ShowMainMenu(); break;
                 case >= Key.D1 and <= Key.D9: SelectWorkspaceByNumber(key - Key.D1); break;
                 default: handled = false; break;
             }
@@ -1281,6 +1384,7 @@ public partial class MainWindow : Window
                 case Key.F5: Reload(); break;
                 case Key.F6: FocusAddress(); break;
                 case Key.F11: SetFullscreen(!_isFullscreen, manual: true); break;
+                case Key.F12: ActiveCore?.OpenDevToolsWindow(); break;
                 case Key.Escape when _manualFullscreen: SetFullscreen(false); break;
                 case Key.Escape when _current?.ActiveTab is { IsLoading: true } && e.OriginalSource is not TextBox:
                     ActiveCore?.Stop(); break;
@@ -1292,204 +1396,41 @@ public partial class MainWindow : Window
         if (handled) e.Handled = true;
     }
 
-    // ───────────────────────── палитра команд Ctrl+K ─────────────────────────
-
-    void Palette_Click(object sender, RoutedEventArgs e) => OpenPalette();
-
-    void OpenPalette()
+    /// <summary>Команды для проверки без мыши и клавиатуры: SneznyjBrowser.exe --cmd=expand-panel --no-activate.</summary>
+    void RunTestCommand(string cmd)
     {
-        if (!_ready) return;
-        new PaletteWindow(this, BuildPaletteItems).Show();
-    }
-
-    List<PaletteItem> BuildPaletteItems(string query)
-    {
-        var q = query.Trim();
-        var match = TextMatch.Matcher(q);
-        var engineName = UrlTools.EngineName(_settings.SearchEngine);
-        var result = new List<PaletteItem>();
-        int found = 0;
-
-        if (q.Length > 0 && UrlTools.LooksLikeAddress(q))
+        switch (cmd)
         {
-            var url = UrlTools.ToUrl(q, _settings.SearchEngine);
-            result.Add(new PaletteItem { Glyph = "", Title = $"Открыть {url}", Kind = "Адрес", Run = () => OpenSmart(url) });
-        }
-
-        foreach (var ws in _workspaces)
-        foreach (var t in ws.Tabs)
-        {
-            bool show = q.Length == 0 ? ws == _current && t != ws.ActiveTab : match(t.Title + " " + t.Url + " " + ws.Name);
-            if (!show) continue;
-            var tab = t;
-            result.Add(new PaletteItem
-            {
-                Glyph = tab.IsPrivate ? "" : "",
-                Icon = tab.Favicon,
-                Title = tab.Title,
-                Subtitle = UrlTools.Display(tab.Url),
-                Kind = ws == _current ? "Вкладка" : $"Вкладка · {ws.Name}",
-                Run = () => { ActivateTab(tab); FocusPage(); },
-            });
-            found++;
-        }
-
-        if (q.Length > 0)
-        {
-            foreach (var ws in _workspaces)
-            foreach (var l in ws.Links.Where(l => match(l.Title + " " + l.Url + " " + ws.Name)))
-            {
-                var link = l;
-                result.Add(new PaletteItem
+            case "expand-panel": _holdExpanded = true; ExpandPanelOverlay(); break;
+            case "collapse-panel": _holdExpanded = false; CollapsePanelOverlay(immediate: false); break;
+            case "menu": ShowMainMenu(); break;
+            case "palette": OpenPalette(); break;
+            case "bookmark": ShowBookmarkPopup(); break;
+            case "downloads-popup": ShowDownloadsPopup(); break;
+            case "group-active": if (_current?.ActiveTab is { } t) NewGroup(t, ask: false); break;
+            case "pin-active": if (_current?.ActiveTab is { } p) TogglePin(p); break;
+            case "toast": ShowToast("Проверка подсказки", "Открыть", () => { }); break;
+            case "screenshot": TakeScreenshot(fullPage: false); break;
+            case "tabmenu":
+                if (_current?.ActiveTab is { } m)
                 {
-                    Glyph = "",
-                    Icon = Favicons.Load(UrlTools.Host(link.Url)),
-                    Title = link.Title,
-                    Subtitle = link.Url,
-                    Kind = $"Стартовая · {ws.Name}",
-                    Run = () => OpenSmart(link.Url),
-                });
-                found++;
-            }
+                    var host = _settings.TabsPosition == "top" ? TopTabs : SideTabs;
+                    var c = host.ItemContainerGenerator.ContainerFromItem(m) as UIElement;
+                    ShowTabMenu(m, host, c);
+                }
+                break;
+            case "import-yandex": ImportBookmarks("yandex"); break;
+            case "newtab": OpenNewTab(); break;
+            case "find": StartFind(); break;
+            case var f when f.StartsWith("findtext:"): FindBar.Visibility = Visibility.Visible; FindBox.Text = f[9..]; RunFind(); break;
+            case "close-others": if (_current?.ActiveTab is { } keep) foreach (var other in _current.Tabs.Where(x => x != keep).ToList()) CloseTab(other); break;
+            case "collapse-groups": foreach (var g in _current?.Groups.ToList() ?? new()) if (!g.Collapsed) ToggleGroup(g); break;
+            default:
+                if (cmd.StartsWith("set:") && cmd.IndexOf('=') is int eq and > 4)
+                    ApplySetting(cmd[4..eq], JsonDocument.Parse(JsonSerializer.Serialize(cmd[(eq + 1)..])).RootElement);
+                else if (cmd.StartsWith("open:")) OpenInternal(cmd[5..]);
+                else if (cmd.StartsWith("suggest:")) ShowSuggestionsFor(cmd[8..]);
+                break;
         }
-
-        foreach (var c in Commands())
-        {
-            if (q.Length == 0 ? !c.Featured : !match(c.Title + " " + c.Keywords)) continue;
-            result.Add(c);
-            found++;
-        }
-
-        var history = q.Length > 0 ? _history.Search(match, 8) : _history.Recent(5);
-        foreach (var h in history)
-        {
-            var entry = h;
-            result.Add(new PaletteItem
-            {
-                Glyph = "",
-                Icon = Favicons.Load(UrlTools.Host(entry.Url)),
-                Title = string.IsNullOrWhiteSpace(entry.Title) ? entry.Url : entry.Title,
-                Subtitle = entry.Url,
-                Kind = "История",
-                Run = () => OpenSmart(entry.Url),
-            });
-            found++;
-        }
-
-        if (q.Length > 0 && !UrlTools.LooksLikeAddress(q))
-        {
-            var search = new PaletteItem
-            {
-                Glyph = "",
-                Title = $"Искать «{q}»",
-                Kind = engineName,
-                Run = () => OpenSmart(UrlTools.SearchUrl(_settings.SearchEngine, q)),
-            };
-            if (found == 0) result.Insert(0, search); else result.Add(search);
-        }
-        return result;
-    }
-
-    IEnumerable<PaletteItem> Commands()
-    {
-        PaletteItem C(string glyph, string title, string hint, string keywords, Action run, bool featured = false) =>
-            new() { Glyph = glyph, Title = title, Hint = hint, Kind = "Команда", Keywords = keywords, Run = run, Featured = featured };
-
-        var tab = _current?.ActiveTab;
-        var site = UrlTools.SiteKey(UrlTools.Host(tab?.Url));
-
-        yield return C("", "Новая вкладка", "Ctrl+T", "new tab открыть", () => OpenNewTab());
-        yield return C("", "Новая приватная вкладка", "Ctrl+Shift+N", "private incognito инкогнито приват", () => OpenNewTab(true), true);
-        yield return C("", "Закрыть вкладку", "Ctrl+W", "close", CloseActiveTab);
-        yield return C("", "Вернуть закрытую вкладку", "Ctrl+Shift+T", "reopen restore восстановить", ReopenClosedTab, _closed.Count > 0);
-        yield return C("", "Добавить страницу на стартовую", "Ctrl+D", "bookmark закладка избранное", () => { if (tab != null) AddToStart(tab); });
-        yield return C("", _panelOpen ? "Скрыть боковую панель" : "Показать боковую панель", "Ctrl+Shift+B", "panel sidebar", TogglePanel);
-        foreach (var app in _panelApps)
-        {
-            var a = app;
-            yield return C(a.Glyph, $"Боковая панель: {a.Name}", "", "panel sidebar " + a.Url, () => OpenPanel(a), true);
-        }
-        int n = 1;
-        foreach (var ws in _workspaces)
-        {
-            var w = ws;
-            yield return C(w.Glyph, $"Пространство: {w.Name}", n <= 9 ? $"Alt+{n}" : "", "workspace перейти", () => SwitchWorkspace(w), w != _current);
-            n++;
-        }
-        yield return C("", "Новое пространство", "", "workspace создать добавить", AddWorkspace);
-        if (UrlTools.IsWeb(tab?.Url) && _settings.AdBlock)
-        {
-            yield return _settings.IsAllowed(site)
-                ? C("", $"Включить блокировщик на {site}", "", "adblock реклама", () => Shield_Click(this, new RoutedEventArgs()))
-                : C("", $"Отключить блокировщик на {site}", "", "adblock реклама разрешить", () => Shield_Click(this, new RoutedEventArgs()));
-        }
-        yield return C("", _settings.AdBlock ? "Выключить блокировщик рекламы везде" : "Включить блокировщик рекламы", "",
-            "adblock реклама трекеры", () =>
-            {
-                _settings.AdBlock = !_settings.AdBlock;
-                SaveSettings();
-                UpdateShield();
-                ShowToast(_settings.AdBlock ? "Блокировщик включён" : "Блокировщик выключен");
-                Reload();
-            });
-        if (tab?.View?.CoreWebView2 is { } core && tab.ShowAudio)
-            yield return C(tab.IsMuted ? "" : "", tab.IsMuted ? "Включить звук вкладки" : "Выключить звук вкладки", "", "mute звук",
-                () => core.IsMuted = !core.IsMuted);
-        foreach (var (id, engine) in UrlTools.Engines)
-        {
-            var key = id;
-            yield return C("", $"Поиск по умолчанию: {engine.Name}" + (id == _settings.SearchEngine ? "  ✓" : ""), "",
-                "search engine поисковик", () =>
-                {
-                    _settings.SearchEngine = key;
-                    SaveSettings();
-                    StartPage.Write(_workspaces, _settings);
-                    ShowToast($"Поиск по умолчанию: {UrlTools.EngineName(key)}");
-                });
-        }
-        yield return C("", "Очистить историю и кэш", "", "clear history cache удалить", ClearHistoryAndCache);
-        yield return C("", "Удалить все данные сайтов (выйти со всех сайтов)", "", "clear cookies пароли выйти", ClearAllSiteData);
-        yield return C("", "Инструменты разработчика", "F12", "devtools console консоль", () => ActiveCore?.OpenDevToolsWindow());
-        yield return C("", "Открыть папку данных браузера", "", "data folder профиль", () =>
-            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{AppPaths.Root}\"") { UseShellExecute = true }));
-        yield return C("", "Открыть файл настроек", "", "settings config", () =>
-            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{AppPaths.SettingsFile}\"") { UseShellExecute = true }));
-        yield return C("", "Полноэкранный режим", "F11", "fullscreen", () => SetFullscreen(!_isFullscreen, manual: true));
-        yield return C("", $"Проверить обновления · версия {Updater.CurrentText}", "", "update обновить обновление версия о программе about",
-            () => CheckForUpdates(manual: true));
-    }
-
-    async void ClearHistoryAndCache()
-    {
-        _history.Clear();
-        _closed.Clear();
-        if (AnyNormalCore() is { } core)
-        {
-            try
-            {
-                await core.Profile.ClearBrowsingDataAsync(
-                    CoreWebView2BrowsingDataKinds.BrowsingHistory | CoreWebView2BrowsingDataKinds.DiskCache |
-                    CoreWebView2BrowsingDataKinds.DownloadHistory | CoreWebView2BrowsingDataKinds.CacheStorage);
-            }
-            catch { }
-        }
-        SaveSession();
-        ShowToast("История и кэш очищены");
-    }
-
-    async void ClearAllSiteData()
-    {
-        if (!InputDialog.Confirm(this, "Удалить все данные сайтов?",
-                "Вы выйдете со всех сайтов, удалятся сохранённые пароли, история и кэш. Вкладки и стартовые останутся.", "Удалить"))
-            return;
-        _history.Clear();
-        _closed.Clear();
-        if (AnyNormalCore() is { } core)
-        {
-            try { await core.Profile.ClearBrowsingDataAsync(); } catch { }
-        }
-        SaveSession();
-        ShowToast("Все данные сайтов удалены");
-        Reload();
     }
 }
