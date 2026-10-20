@@ -225,6 +225,7 @@ public static class Themes
         B("NoticeBrush", p.Notice);
         B("NoticeBorderBrush", p.NoticeBorder);
         r["AccentSoftBrush"] = Brush(p.Accent, 0.16);
+        B("GroupTextBrush", p.IsDark ? "#15181C" : "#FFFFFF");
         r["ShadowOpacity"] = p.IsDark ? 0.55 : 0.18;
         WriteCss();
 

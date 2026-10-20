@@ -11,7 +11,7 @@ namespace SneznyjBrowser;
 /// <summary>Внутренние страницы браузера (sneznyj://settings, history, downloads, bookmarks) лежат в папке стартовой.</summary>
 public static class InternalPages
 {
-    static readonly string[] Files = { "settings.html", "history.html", "downloads.html", "bookmarks.html", "ui.css", "ui.js" };
+    static readonly string[] Files = { "settings.html", "history.html", "downloads.html", "bookmarks.html", "reader.html", "ui.css", "ui.js" };
 
     public static void WriteAll()
     {
@@ -174,6 +174,7 @@ public partial class MainWindow
         "history" => HistoryPayload(""),
         "downloads" => DownloadsPayload(),
         "bookmarks" => BookmarksPayload(),
+        "reader" => ReaderPayload(r.TryGetProperty("id", out var rid) ? rid.GetString() ?? "" : ""),
         _ => null,
     };
 

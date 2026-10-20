@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https: http:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<meta name="referrer" content="no-referrer">
+<title>Режим чтения</title>
+<link id="theme" rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="ui.css">
+<style>
+  body { --rbg: var(--page); --rtext: var(--text); --rmuted: var(--muted); background: var(--rbg); color: var(--rtext) }
+  body.sepia { --rbg: #f4ecd8; --rtext: #3b2f20; --rmuted: #7a6a55; color-scheme: light }
+  body.paper { --rbg: #ffffff; --rtext: #1d232b; --rmuted: #65707c; color-scheme: light }
+  body.night { --rbg: #111418; --rtext: #d9dee5; --rmuted: #8a95a3; color-scheme: dark }
+  .bar { position: sticky; top: 0; z-index: 5; display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; padding: 10px; background: color-mix(in srgb, var(--rbg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid color-mix(in srgb, var(--rmuted) 25%, transparent) }
+  .bar button { border: 1px solid color-mix(in srgb, var(--rmuted) 35%, transparent); background: transparent; color: var(--rtext); font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 9px; cursor: pointer; min-width: 36px }
+  .bar button:hover { background: color-mix(in srgb, var(--rmuted) 15%, transparent) }
+  .bar button.on { border-color: var(--accent); color: var(--accent) }
+  .bar .sw { width: 22px; height: 22px; border-radius: 50%; padding: 0; min-width: 0; margin: 4px 2px }
+  .bar .sep { width: 1px; background: color-mix(in srgb, var(--rmuted) 30%, transparent); margin: 4px 6px }
+  article { max-width: var(--w, 720px); margin: 0 auto; padding: 40px 24px 120px; font-size: var(--fs, 19px); line-height: 1.7; font-family: var(--ff, Georgia, "Times New Roman", serif) }
+  article .site { font: 13px "Segoe UI", sans-serif; color: var(--rmuted); display: flex; gap: 10px; align-items: center; flex-wrap: wrap }
+  article .site a { color: var(--accent) }
+  article h1.title { font-size: 1.9em; line-height: 1.22; margin: 12px 0 8px }
+  article .meta { font: 13px "Segoe UI", sans-serif; color: var(--rmuted); margin-bottom: 30px }
+  article h2 { font-size: 1.4em; line-height: 1.3; margin: 1.6em 0 .5em }
+  article h3, article h4, article h5, article h6 { font-size: 1.15em; margin: 1.4em 0 .4em }
+  article p { margin: 0 0 1em }
+  article img { max-width: 100%; height: auto; border-radius: 10px; display: block; margin: 1.2em auto }
+  article figcaption, article .cap { font-size: .8em; color: var(--rmuted); text-align: center; margin: -.6em 0 1.2em }
+  article blockquote { margin: 1.2em 0; padding: .2em 0 .2em 1.1em; border-left: 3px solid var(--accent); color: var(--rmuted); font-style: italic }
+  article pre { font: 14px/1.5 Consolas, monospace; background: color-mix(in srgb, var(--rmuted) 12%, transparent); padding: 14px; border-radius: 10px; overflow-x: auto; white-space: pre-wrap }
+  article ul, article ol { margin: 0 0 1em; padding-left: 1.4em }
+  article li { margin: .25em 0 }
+  .none { text-align: center; color: var(--rmuted); padding: 80px 20px; font: 15px "Segoe UI", sans-serif }
+</style>
+</head>
+<body>
+<div class="bar" id="bar"></div>
+<article id="art"><div class="none">Загружаю статью…</div></article>
+<script src="ui.js"></script>
+<script>
+(() => {
+  const P = Object.assign({ fs: 19, ff: 'serif', w: 720, tone: '' }, JSON.parse(localStorage.getItem('reader') || '{}'));
+  const save = () => { try { localStorage.setItem('reader', JSON.stringify(P)); } catch (e) { } };
+  const art = $('#art');
+  const apply = () => {
+    art.style.setProperty('--fs', P.fs + 'px');
+    art.style.setProperty('--w', P.w + 'px');
+    art.style.setProperty('--ff', P.ff === 'sans' ? '"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif' : 'Georgia,"Times New Roman",serif');
+    document.body.className = P.tone;
+    $$('.bar [data-ff]').forEach(b => b.classList.toggle('on', b.dataset.ff === P.ff));
+    $$('.bar [data-tone]').forEach(b => b.classList.toggle('on', b.dataset.tone === P.tone));
+  };
+  let article = null;
+  const bar = $('#bar');
+  const B = (text, title, fn, attrs) => el('button', Object.assign({ text, title, onclick: () => { fn(); save(); apply(); } }, attrs || {}));
+  bar.append(
+    B('A−', 'Мельче', () => P.fs = Math.max(14, P.fs - 1)),
+    B('A+', 'Крупнее', () => P.fs = Math.min(30, P.fs + 1)),
+    el('span', { class: 'sep' }),
+    B('С засечками', 'Шрифт с засечками', () => P.ff = 'serif', { 'data-ff': 'serif' }),
+    B('Без засечек', 'Шрифт без засечек', () => P.ff = 'sans', { 'data-ff': 'sans' }),
+    el('span', { class: 'sep' }),
+    B('Уже', 'Узкая колонка', () => P.w = Math.max(520, P.w - 80)),
+    B('Шире', 'Широкая колонка', () => P.w = Math.min(1100, P.w + 80)),
+    el('span', { class: 'sep' }),
+    B('', 'Как тема браузера', () => P.tone = '', { class: 'sw', 'data-tone': '', style: { background: 'var(--page)' } }),
+    B('', 'Белый', () => P.tone = 'paper', { class: 'sw', 'data-tone': 'paper', style: { background: '#fff' } }),
+    B('', 'Сепия', () => P.tone = 'sepia', { class: 'sw', 'data-tone': 'sepia', style: { background: '#f4ecd8' } }),
+    B('', 'Ночь', () => P.tone = 'night', { class: 'sw', 'data-tone': 'night', style: { background: '#111418' } }),
+    el('span', { class: 'sep' }),
+    el('button', { text: 'Оригинал', title: 'Вернуться к обычной странице', onclick: () => article && Bridge.post({ cmd: 'open', url: article.url, mode: 'same' }) }));
+  apply();
+
+  function render(a) {
+    article = a;
+    art.textContent = '';
+    document.title = a.title || 'Режим чтения';
+    const words = a.blocks.reduce((s, b) => s + ((b.x || (b.items || []).join(' ')).split(/\s+/).length), 0);
+    art.append(
+      el('div', { class: 'site' }, el('a', { text: a.site, href: '#', onclick: e => { e.preventDefault(); Bridge.post({ cmd: 'open', url: a.url, mode: 'same' }); } })),
+      el('h1', { class: 'title', text: a.title }),
+      el('div', { class: 'meta', text: `Читать примерно ${Math.max(1, Math.round(words / 180))} мин` }));
+    let first = true;
+    for (const b of a.blocks) {
+      if (first && b.t === 'h1' && b.x.trim() === (a.title || '').trim()) { first = false; continue; }
+      first = false;
+      if (/^h[1-6]$/.test(b.t)) art.append(el(b.t === 'h1' ? 'h2' : b.t, { text: b.x }));
+      else if (b.t === 'p') art.append(el('p', { text: b.x }));
+      else if (b.t === 'q') art.append(el('blockquote', { text: b.x }));
+      else if (b.t === 'pre') art.append(el('pre', { text: b.x }));
+      else if (b.t === 'ul' || b.t === 'ol') art.append(el(b.t, null, b.items.map(i => el('li', { text: i }))));
+      else if (b.t === 'img' && /^https?:\/\//i.test(b.src)) {
+        art.append(el('img', { src: b.src, alt: b.alt || '', loading: 'lazy', referrerpolicy: 'no-referrer' }));
+        if (b.cap) art.append(el('div', { class: 'cap', text: b.cap }));
+      }
+    }
+  }
+
+  Bridge.on('reader', m => {
+    if (!m.article) { art.textContent = ''; art.append(el('div', { class: 'none', text: 'Статья больше недоступна — откройте страницу снова и включите режим чтения.' })); return; }
+    render(m.article);
+  });
+  Bridge.post({ cmd: 'init', page: 'reader', id: new URLSearchParams(location.search).get('id') || '' });
+})();
+</script>
+</body>
+</html>

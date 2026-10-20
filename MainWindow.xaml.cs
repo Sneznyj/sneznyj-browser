@@ -630,6 +630,7 @@ public partial class MainWindow : Window
             tab.PendingUrl = null;
             if (HttpsFallback(core, tab, e)) return;
             if (e.IsSuccess && !tab.IsPrivate) _history.Add(core.Source, core.DocumentTitle);
+            if (e.IsSuccess) CheckReadable(tab, core);
             if (tab == _current?.ActiveTab) UpdateChrome();
         };
         core.SourceChanged += (_, _) =>
@@ -923,6 +924,7 @@ public partial class MainWindow : Window
         UpdateShield();
         UpdateStar();
         UpdateZoomChip();
+        UpdateReaderButton();
     }
 
     void UpdateTitle()
@@ -1396,6 +1398,37 @@ public partial class MainWindow : Window
         if (handled) e.Handled = true;
     }
 
+    /// <summary>Проверка перетаскивания без мыши: dragsim:откуда:куда (номера в полосе вкладок) — курсор «едет» шагами по 8 пикселей.</summary>
+    void DragSimulation(string cmd)
+    {
+        var parts = cmd.Split(':');
+        if (parts.Length < 3 || _current == null || !int.TryParse(parts[1], out int from) || !int.TryParse(parts[2], out int to)) return;
+        var host = _settings.TabsPosition == "top" ? TopTabs : SideTabs;
+        if (from >= _current.Strip.Count || to >= _current.Strip.Count || _current.Strip[from] is not BrowserTab tab) return;
+        bool horizontal = host == TopTabs;
+        Point Center(int i)
+        {
+            var c = (FrameworkElement)host.ItemContainerGenerator.ContainerFromIndex(i);
+            var r = c.TransformToAncestor(host).TransformBounds(new Rect(c.RenderSize));
+            return new Point(r.Left + r.Width / 2, r.Top + r.Height / 2);
+        }
+        var a = Center(from);
+        var b = Center(to);
+        b = horizontal ? new Point(b.X + (to > from ? 12 : -12), b.Y) : new Point(b.X, b.Y + (to > from ? 6 : -6));
+        _dragHost = host;
+        _dragTab = tab;
+        _dragging = true;
+        int steps = (int)Math.Max(1, (horizontal ? Math.Abs(b.X - a.X) : Math.Abs(b.Y - a.Y)) / 8);
+        for (int s = 1; s <= steps; s++)
+        {
+            var p = new Point(a.X + (b.X - a.X) * s / steps, a.Y + (b.Y - a.Y) * s / steps);
+            DragTo(host, p, horizontal);
+            host.UpdateLayout();
+        }
+        EndDrag();
+        QueueSave();
+    }
+
     /// <summary>Команды для проверки без мыши и клавиатуры: SneznyjBrowser.exe --cmd=expand-panel --no-activate.</summary>
     void RunTestCommand(string cmd)
     {
@@ -1421,6 +1454,8 @@ public partial class MainWindow : Window
                 break;
             case "import-yandex": ImportBookmarks("yandex"); break;
             case "newtab": OpenNewTab(); break;
+            case "reader": OpenReader(); break;
+            case var ds when ds.StartsWith("dragsim:"): DragSimulation(ds); break;
             case "find": StartFind(); break;
             case var f when f.StartsWith("findtext:"): FindBar.Visibility = Visibility.Visible; FindBox.Text = f[9..]; RunFind(); break;
             case "close-others": if (_current?.ActiveTab is { } keep) foreach (var other in _current.Tabs.Where(x => x != keep).ToList()) CloseTab(other); break;

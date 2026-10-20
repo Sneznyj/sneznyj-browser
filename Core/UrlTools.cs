@@ -42,6 +42,7 @@ public static class UrlTools
         ["history"] = ("История", "\uE81C"),
         ["downloads"] = ("Загрузки", "\uE896"),
         ["bookmarks"] = ("Закладки", "\uE734"),
+        ["reader"] = ("Режим чтения", "\uE736"),
     };
 
     public static string PageUrl(string page, string? anchor = null) =>

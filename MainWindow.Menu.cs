@@ -57,6 +57,7 @@ public partial class MainWindow
         m.Items.Add(ZoomRow());
         m.Items.Add(MenuItemFor("Найти на странице", "", StartFind, tab?.View != null, "Ctrl+F"));
         m.Items.Add(MenuItemFor("Перевести страницу на русский", "", TranslatePage, web));
+        m.Items.Add(MenuItemFor("Режим чтения", "", OpenReader, web || UrlTools.InternalPage(tab?.Url) == "reader"));
         var shot = MenuItemFor("Скриншот", "", null, tab?.View != null);
         shot.Items.Add(MenuItemFor("Видимая часть страницы", null, () => TakeScreenshot(fullPage: false), gesture: "Ctrl+Shift+S"));
         shot.Items.Add(MenuItemFor("Вся страница целиком", null, () => TakeScreenshot(fullPage: true)));
@@ -617,6 +618,7 @@ public partial class MainWindow
                 () => core.IsMuted = !core.IsMuted);
         yield return C("", "Найти на странице", "Ctrl+F", "find поиск искать", StartFind);
         yield return C("", "Перевести страницу", "", "translate перевод переводчик", TranslatePage);
+        yield return C("", "Режим чтения", "", "reader чтение статья читать", OpenReader);
         yield return C("", "Скриншот видимой части", "Ctrl+Shift+S", "screenshot снимок экрана", () => TakeScreenshot(false));
         yield return C("", "Скриншот всей страницы", "", "screenshot снимок экрана целиком", () => TakeScreenshot(true));
         yield return C("", "Печать", "Ctrl+P", "print печать pdf", PrintPage);

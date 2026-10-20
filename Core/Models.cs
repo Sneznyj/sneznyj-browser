@@ -56,6 +56,9 @@ public sealed class BrowserTab : Observable
 
     public bool InGroup => _group != null;
 
+    /// <summary>На странице есть статья — можно открыть режим чтения.</summary>
+    public bool CanRead { get; set; }
+
     public ImageSource? Favicon
     {
         get => _favicon;

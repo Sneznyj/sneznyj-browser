@@ -17,7 +17,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Product>РЎРЅРµР¶РЅС‹Р№ Р±СЂР°СѓР·РµСЂ</Product>
     <AssemblyTitle>РЈСЃС‚Р°РЅРѕРІРєР° РЎРЅРµР¶РЅРѕРіРѕ Р±СЂР°СѓР·РµСЂР°</AssemblyTitle>
