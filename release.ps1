@@ -13,7 +13,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $key = Join-Path $env:APPDATA 'Sneznyj\browser-update-key.pem'
-$share = Join-Path $env:USERPROFILE 'OneDrive\Рабочий стол\Claude Проекты\Снежный браузер'
+$share = Join-Path $env:USERPROFILE 'OneDrive\Рабочий стол\Claude Проекты\Программы и боты\Снежный браузер'
 
 if (-not ($Version -match '^\d+\.\d+\.\d+$')) { throw 'Версия должна быть вида 0.2.1' }
 if (-not (Test-Path $key)) { throw "Нет ключа подписи $key. Без него обновления не выпустить (см. README)." }
